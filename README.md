@@ -1,4 +1,4 @@
-# KOLLEKTIV POSTER 3.4
+ # KOLLEKTIV POSTER 3.4
 
 Single-origin collaborative poster app for Render.
 
@@ -24,3 +24,4 @@ State is in memory for the free prototype and resets if the service restarts.
 
 ## v3.6
 Fixar rumsspecifika roller, fungerande rollbyte med allas godkännande, per-text typografi, riktig webbkamera via getUserMedia och globala CHAOS-filter.
+
