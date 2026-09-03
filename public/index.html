@@ -1,20 +1,21 @@
 <!doctype html>
-<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KOLLEKTIV POSTER 3.9</title><link rel="stylesheet" href="/style.css"></head>
+<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KOLLEKTIV POSTER 4.1</title><link rel="stylesheet" href="/style.css"></head>
 <body>
-<header><div><div class="logo">KOLLEKTIV / POSTER_3.9</div><div class="tiny">NINE PEOPLE · ONE IMAGE · LIVE</div></div><div id="status" class="status">OFFLINE</div></header>
+<header><div><div class="logo">KOLLEKTIV / POSTER_4.1</div><div class="tiny">NIO PERSONER · EN BILD · LIVE</div></div><div id="status" class="status">OFFLINE</div></header>
 <main>
-<section class="entry panel"><label>ROOM</label><input id="room" value="MAIN"><button id="enter">ENTER ROOM</button><span id="role">ROLL: —</span></section>
+<section class="entry panel"><label>RUM</label><input id="room" value="MAIN"><button id="enter">GÅ IN</button><span id="role">ROLL: —</span></section>
 <section class="workspace">
 <div class="poster-wrap"><canvas id="poster" width="900" height="1200"></canvas></div>
 <aside class="side">
 <div class="panel"><div class="section-title">DIN ROLL</div><div id="controls"></div></div>
 <div class="panel"><div class="section-title">DELTAGARE / ROLLBYTE</div><div id="people"></div><div id="proposal" class="proposal hidden"></div></div>
 <div class="panel chat-panel"><div class="section-title">CHAT</div><div id="chat"></div><div class="chatrow"><input id="chatInput" placeholder="skriv meddelande..."><button id="chatSend">SKICKA</button></div></div>
-<div class="panel"><button id="download">↓ LADDA NER PNG</button><button id="clear" class="hidden">RENSA TECKNING</button></div>
+<div class="panel actions"><button id="saveArchive">SPARA POSTER</button><button id="openArchive">ARKIV</button><button id="download">↓ LADDA NER PNG</button><button id="clear" class="hidden">RENSA TECKNING</button></div>
 </aside></section></main>
+<div id="archiveModal" class="archive-modal hidden"><div class="archive-box"><div class="archive-head"><div class="section-title">ARKIV</div><button id="closeArchive">STÄNG</button></div><div id="archiveGrid" class="archive-grid"></div><div id="archiveDetail" class="archive-detail hidden"></div></div></div>
 <script>
 const C=document.getElementById('poster'),X=C.getContext('2d'),SC=document.createElement('canvas');SC.width=C.width;SC.height=C.height;const Q=SC.getContext('2d'),$=id=>document.getElementById(id);
-let ws=null,myId=null,myRole=null,pendingRoom=null,activeRoom=null,currentPeople=[],proposal=null,drawing=false,pts=[],reconnectTimer=null,heartbeatTimer=null;
+let ws=null,myId=null,myRole=null,pendingRoom=null,activeRoom=null,currentPeople=[],proposal=null,drawing=false,pts=[],reconnectTimer=null,heartbeatTimer=null,archiveItems=[];
 const roles={1:'BAKGRUND',2:'TEXTUR',3:'STICKERS',4:'COPYWRITER',5:'TYPSNITT',6:'TECKNA',7:'PAINTBRUSH',8:'CHAOS',9:'FOTOGRAF'};
 let S={bg:{mode:'gradient',colorA:'#101010',colorB:'#5a416f',angle:135},texture:{type:'noise',opacity:.1,color:'#fff',scale:18},stickers:[],textLayers:[{id:1,value:'COLLECTIVE SIGNAL',x:50,y:15,color:'#fff',size:42,shadow:true,font:'Arial',weight:'700',height:100,width:100,skew:0}],type:{font:'Arial',weight:'700',height:100,width:100,skew:0},draw:{color:'#fff',strokes:[]},brush:{size:8,opacity:.8,type:'soft',jitter:0,spacing:1},chaos:{amount:0,mode:'glitch',frequency:5},photos:[]};
 function send(m){if(ws?.readyState===1)ws.send(JSON.stringify(m))}
@@ -29,12 +30,15 @@ function connect(){
  ws.onmessage=e=>{
   const m=JSON.parse(e.data);
   if(m.type==='hello'){myId=m.clientId;m.roles?.forEach(r=>roles[r.id]=r.name)}
-  if(m.type==='joined'){myRole=m.role;S=m.state;currentPeople=m.clients||[];proposal=m.proposal;apply();renderPeople(currentPeople);showProposal(proposal)}
+  if(m.type==='joined'){myRole=m.role;S=m.state;currentPeople=m.clients||[];proposal=m.proposal;archiveItems=m.archive||[];apply();renderPeople(currentPeople);showProposal(proposal);renderArchive()}
   if(m.type==='presence'){currentPeople=m.clients||[];renderPeople(currentPeople);if(proposal)showProposal(proposal)}
   if(m.type==='roleChanged'){myRole=m.role;currentPeople=m.clients||currentPeople;apply();renderPeople(currentPeople);addChat('SYSTEM: rollerna har bytts.')}
   if(m.type==='roleProposal'){proposal=m.proposal;showProposal(proposal)}
+  if(m.type==='archiveList'){archiveItems=m.archive||[];renderArchive()}
+  if(m.type==='archiveItem'){showArchiveItem(m.item)}
+  if(m.type==='archiveSaved'){send({type:'archiveList'});addChat('SYSTEM: postern sparad i arkivet.')}
   if(m.type==='pong'){stat('ONLINE')}
-  if(m.type==='state'){S[m.key]=m.value;build();render()}
+  if(m.type==='state'){S[m.key]=m.value;scheduleBuild();scheduleRender()}
   if(m.type==='stroke'){S.draw.strokes.push(m.stroke);render()}
   if(m.type==='clear'){S.draw.strokes=[];render()}
   if(m.type==='chat')addChat('P'+m.from+' · '+(roles[m.role]||'—')+': '+m.text)
@@ -50,14 +54,14 @@ function sel(o,p,l,opts,fn){let i=document.createElement('select');opts.forEach(
 function textInput(value,fn){let i=document.createElement('input');i.value=value;i.onchange=()=>fn(i.value);return i}
 function build(){
  const q=$('controls');q.innerHTML='';if(!myRole)return;
- if(myRole===1){sel(S.bg,'mode','MODE',['gradient','solid'],v=>set('bg',{...S.bg,mode:v}));col(S.bg,'colorA','FÄRG',v=>set('bg',{...S.bg,colorA:v}));if(S.bg.mode==='gradient')col(S.bg,'colorB','GRADIENT B',v=>set('bg',{...S.bg,colorB:v}));rng(S.bg,'angle','VINKEL',0,360,1,v=>set('bg',{...S.bg,angle:v}))}
+ if(myRole===1){sel(S.bg,'mode','LÄGE',['gradient','solid'],v=>set('bg',{...S.bg,mode:v}));col(S.bg,'colorA','FÄRG',v=>set('bg',{...S.bg,colorA:v}));if(S.bg.mode==='gradient')col(S.bg,'colorB','GRADIENT B',v=>set('bg',{...S.bg,colorB:v}));rng(S.bg,'angle','VINKEL',0,360,1,v=>set('bg',{...S.bg,angle:v}))}
  if(myRole===2){sel(S.texture,'type','TEXTUR',['noise','dots','lines','grid','cross','waves','rings','hatch','speckle','grain','scribble','bubbles','none'],v=>set('texture',{...S.texture,type:v}));col(S.texture,'color','FÄRG',v=>set('texture',{...S.texture,color:v}));rng(S.texture,'opacity','OPACITY',0,1,.01,v=>set('texture',{...S.texture,opacity:v}));rng(S.texture,'scale','SKALA',4,80,1,v=>set('texture',{...S.texture,scale:v}))}
  if(myRole===3){['star','heart','circle','square'].forEach(s=>{let b=document.createElement('button');b.textContent='+ '+s.toUpperCase();b.onclick=()=>send({type:'addSticker',shape:s});q.append(b)});S.stickers.forEach(s=>{let d=document.createElement('div');d.className='item';d.append(document.createTextNode(s.shape.toUpperCase()));col(s,'color','FÄRG',v=>{s.color=v;set('stickers',S.stickers)});rng(s,'size','STORLEK',10,400,1,v=>{s.size=v;set('stickers',S.stickers)});rng(s,'x','X',0,100,1,v=>{s.x=v;set('stickers',S.stickers)});rng(s,'y','Y',0,100,1,v=>{s.y=v;set('stickers',S.stickers)});let b=document.createElement('button');b.textContent='TA BORT';b.onclick=()=>send({type:'removeSticker',id:s.id});d.append(b);q.append(d)})}
- if(myRole===4){let b=document.createElement('button');b.textContent='+ NYTT TEXTLAGER';b.onclick=()=>send({type:'addText'});q.append(b);S.textLayers.forEach(t=>{let d=document.createElement('div');d.className='item';d.append(textInput(t.value,v=>{t.value=v;set('textLayers',S.textLayers)}));col(t,'color','FÄRG',v=>{t.color=v;set('textLayers',S.textLayers)});rng(t,'size','STORLEK',8,180,1,v=>{t.size=v;set('textLayers',S.textLayers)});rng(t,'x','X',0,100,1,v=>{t.x=v;set('textLayers',S.textLayers)});rng(t,'y','Y',0,100,1,v=>{t.y=v;set('textLayers',S.textLayers)});let l=document.createElement('label'),c=document.createElement('input');c.type='checkbox';c.checked=!!t.shadow;c.onchange=()=>{t.shadow=c.checked;set('textLayers',S.textLayers)};l.append(c,document.createTextNode(' DROP SHADOW'));d.append(l);let z=document.createElement('button');z.textContent='TA BORT';z.onclick=()=>send({type:'removeText',id:t.id});d.append(z);q.append(d)})}
+ if(myRole===4){let b=document.createElement('button');b.textContent='+ NYTT TEXTLAGER';b.onclick=()=>send({type:'addText'});q.append(b);S.textLayers.forEach(t=>{let d=document.createElement('div');d.className='item';d.append(textInput(t.value,v=>{t.value=v;set('textLayers',S.textLayers)}));col(t,'color','FÄRG',v=>{t.color=v;set('textLayers',S.textLayers)});rng(t,'size','STORLEK',8,180,1,v=>{t.size=v;set('textLayers',S.textLayers)});rng(t,'x','X',0,100,1,v=>{t.x=v;set('textLayers',S.textLayers)});rng(t,'y','Y',0,100,1,v=>{t.y=v;set('textLayers',S.textLayers)});let l=document.createElement('label'),c=document.createElement('input');c.type='checkbox';c.checked=!!t.shadow;c.onchange=()=>{t.shadow=c.checked;set('textLayers',S.textLayers)};l.append(c,document.createTextNode(' SKUGGA'));d.append(l);let z=document.createElement('button');z.textContent='TA BORT';z.onclick=()=>send({type:'removeText',id:t.id});d.append(z);q.append(d)})}
  if(myRole===5){q.insertAdjacentHTML('beforeend','<div class="hint">Välj textlager och ändra typografin för just det lagret.</div>');S.textLayers.forEach((t,i)=>{let d=document.createElement('div');d.className='item';d.append(document.createTextNode('TEXT '+(i+1)+' · '+(t.value||'')));sel(t,'font','TYPSNITT',['Arial','Times New Roman','Times Bold','Old English','Helvetica','Futura'],v=>{t.font=v;set('textLayers',S.textLayers)});sel(t,'weight','VIKT',['400','700','900'],v=>{t.weight=v;set('textLayers',S.textLayers)});rng(t,'height','HÖJD',50,180,1,v=>{t.height=v;set('textLayers',S.textLayers)});rng(t,'width','BREDD',50,180,1,v=>{t.width=v;set('textLayers',S.textLayers)});rng(t,'skew','LUTNING',-45,45,1,v=>{t.skew=v;set('textLayers',S.textLayers)});q.append(d)})}
  if(myRole===6){col(S.draw,'color','PENNFÄRG',v=>set('draw',{...S.draw,color:v}));let n=document.createElement('div');n.className='hint';n.textContent='RITA DIREKT PÅ POSTERN';q.append(n)}
- if(myRole===7){sel(S.brush,'type','PENSA',['soft','hard','ink','dry','marker'],v=>set('brush',{...S.brush,type:v}));rng(S.brush,'size','TJOCKLEK',1,100,1,v=>set('brush',{...S.brush,size:v}));rng(S.brush,'opacity','OPACITY',0,1,.01,v=>set('brush',{...S.brush,opacity:v}));rng(S.brush,'jitter','JITTER',0,100,1,v=>set('brush',{...S.brush,jitter:v}));rng(S.brush,'spacing','BEHAVIOR',1,20,1,v=>set('brush',{...S.brush,spacing:v}))}
- if(myRole===8){sel(S.chaos,'mode','FILTER',['glitch','ripple','warp','jitter','rotation','scatter','solarize','echo'],v=>set('chaos',{...S.chaos,mode:v}));rng(S.chaos,'amount','AMOUNT',0,100,1,v=>set('chaos',{...S.chaos,amount:v}));rng(S.chaos,'frequency','FREQUENCY',1,30,1,v=>set('chaos',{...S.chaos,frequency:v}));let h=document.createElement('div');h.className='hint';h.textContent='CHAOS påverkar hela bilden.';q.append(h)}
+ if(myRole===7){sel(S.brush,'type','PENSA',['soft','hard','ink','dry','marker'],v=>set('brush',{...S.brush,type:v}));rng(S.brush,'size','TJOCKLEK',1,100,1,v=>set('brush',{...S.brush,size:v}));rng(S.brush,'opacity','OPACITY',0,1,.01,v=>set('brush',{...S.brush,opacity:v}));rng(S.brush,'jitter','JITTER',0,100,1,v=>set('brush',{...S.brush,jitter:v}));rng(S.brush,'spacing','BETEENDE',1,20,1,v=>set('brush',{...S.brush,spacing:v}))}
+ if(myRole===8){sel(S.chaos,'mode','FILTER',['glitch','ripple','warp','jitter','rotation','scatter','solarize','echo'],v=>set('chaos',{...S.chaos,mode:v}));rng(S.chaos,'amount','MÄNGD',0,100,1,v=>set('chaos',{...S.chaos,amount:v}));rng(S.chaos,'frequency','FREKVENS',1,30,1,v=>set('chaos',{...S.chaos,frequency:v}));let h=document.createElement('div');h.className='hint';h.textContent='Filtret påverkar hela postern.';q.append(h)}
  if(myRole===9){let b=document.createElement('button');b.textContent='📷 ÖPPNA KAMERA';b.onclick=openCamera;q.append(b);let i=document.createElement('input');i.type='file';i.accept='image/*';i.onchange=()=>filePhoto(i.files[0]);ctrl('BILDFIL',i);S.photos.forEach(p=>{rng(p,'w','STORLEK',10,100,1,v=>{p.w=v;set('photos',S.photos)});rng(p,'x','X',0,100,1,v=>{p.x=v;set('photos',S.photos)});rng(p,'y','Y',0,100,1,v=>{p.y=v;set('photos',S.photos)})})}
 }
 function renderPeople(list){
@@ -158,6 +162,16 @@ C.onpointerup=()=>{if(drawing){drawing=false;if(pts.length>1)send({type:'stroke'
 $('clear').onclick=()=>send({type:'clear'});
 $('download').onclick=()=>{render();let a=document.createElement('a');a.download='kollektiv-poster.png';a.href=C.toDataURL('image/png');a.click()};
 
+// Arkiv
+function dna(){return {deltagare:currentPeople.length,rollbyten:0,kaos:Math.round((S.chaos?.amount||0)),textlager:S.textLayers.length,foton:S.photos.length,stickers:S.stickers.length,streck:S.draw.strokes.length}};
+function saveArchive(){if(!ws||ws.readyState!==1){addChat('SYSTEM: ingen anslutning.');return}render();const image=C.toDataURL('image/jpeg',.82);const tc=document.createElement('canvas');tc.width=180;tc.height=240;tc.getContext('2d').drawImage(C,0,0,180,240);const thumb=tc.toDataURL('image/jpeg',.68);const title='Poster '+new Date().toLocaleString('sv-SE',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit',year:'numeric'});send({type:'archiveSave',title,image,thumb,dna:dna()})}
+function renderArchive(){const g=$('archiveGrid');if(!g)return;g.innerHTML='';if(!archiveItems.length){g.innerHTML='<div class="hint">Inga sparade affischer ännu.</div>';return}archiveItems.forEach(a=>{let b=document.createElement('button');b.className='archive-card';b.innerHTML='<span class="archive-thumb"></span><strong>'+esc(a.title)+'</strong><small>'+new Date(a.createdAt).toLocaleString('sv-SE')+'</small>';b.onclick=()=>send({type:'archiveGet',id:a.id});g.append(b);loadThumb(a,b.querySelector('.archive-thumb'))})}
+function loadThumb(a,el){if(a.thumb)el.style.backgroundImage=`url(${a.thumb})`}
+function showArchiveItem(a){const d=$('archiveDetail');d.classList.remove('hidden');const labels={deltagare:'Deltagare',rollbyten:'Rollbyten',kaos:'Kaos',textlager:'Textlager',foton:'Foton',stickers:'Stickers',streck:'Streck'};d.innerHTML='<button id="backArchive">← TILLBAKA</button><h3>'+esc(a.title)+'</h3><img src="'+a.image+'"><div class="dna">'+Object.entries(a.dna||{}).map(([k,v])=>'<span><b>'+esc(labels[k]||k)+'</b> '+esc(String(v))+'</span>').join('')+'</div>';d.querySelector('#backArchive').onclick=()=>{d.classList.add('hidden');renderArchive()}}
+function esc(v){return String(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+$('saveArchive').onclick=saveArchive;
+$('openArchive').onclick=()=>{$('archiveModal').classList.remove('hidden');$('archiveDetail').classList.add('hidden');send({type:'archiveList'})};
+$('closeArchive').onclick=()=>{$('archiveModal').classList.add('hidden')};
 // Camera
 let camStream=null;
 async function openCamera(){

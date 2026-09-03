@@ -1,26 +1,30 @@
-# KOLLEKTIV POSTER 3.4
+# Kollektiv Poster v4.1
 
-Single-origin collaborative poster app for Render.
+Kollektiv Poster är en gemensam posterverkstad i webbläsaren. Nio roller arbetar samtidigt i samma rum.
 
-### New in 3.4
-- 7th role: CHAOS
-- Role changes require approval from every currently connected participant
-- Role changes swap roles when the requested role is occupied
-- More textures: dots, lines, cross, grid, waves, speckle, noise
-- Noise is gray/white instead of painting the image black
-- Multiple independent text layers
-- Text layer color, position and visibility
-- Chaos modes: jitter, warp, glitch, rotation
-- Chaos influences background, texture, graphics, brush and typography
+## Roller
+1. BAKGRUND
+2. TEXTUR
+3. STICKERS
+4. COPYWRITER
+5. TYPSNITT
+6. TECKNA
+7. PAINTBRUSH
+8. CHAOS
+9. FOTOGRAF
 
-### Render
-Build: `npm install`
-Start: `npm start`
+## Rollbyte
+Rollbyten sker genom en gemensam godkännandeprocess. En ledig roll kan också begäras. Alla deltagare i samma rum ser vilka som har godkänt och vilka som väntar.
 
-The app and WebSocket share the same origin. WebSocket endpoint is `/ws`.
+## CHAOS
+CHAOS lägger ett globalt filter ovanpå hela den färdiga postern. Filter: glitch, ripple, warp, jitter, rotation, scatter, solarize och echo. Mängd och frekvens styr effekten.
 
-State is in memory for the free prototype and resets if the service restarts.
+## Arkiv
+En färdig poster kan sparas i rummets arkiv. Arkivet visar miniatyrer och poster-DNA med deltagare, rollbyten, kaos, textlager, foton, stickers och streck. Arkivet ligger i serverns minne och återställs vid omstart/deploy.
 
-
-## v3.6
-Fixar rumsspecifika roller, fungerande rollbyte med allas godkännande, per-text typografi, riktig webbkamera via getUserMedia och globala CHAOS-filter.
+## Start
+```bash
+npm install
+npm start
+```
+Öppna sedan serverns adress i webbläsaren.
