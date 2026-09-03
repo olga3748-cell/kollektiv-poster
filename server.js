@@ -38,9 +38,12 @@ const server = http.createServer((req, res) => {
   let file = req.url.split("?")[0];
   if (file === "/health") {
     res.writeHead(200, {"Content-Type":"application/json"});
-    return res.end(JSON.stringify({ok:true, rooms: rooms.size}));
+    return res.end(JSON.stringify({ok:true, service:"kollektiv-poster", websocket:"/ws", rooms: rooms.size}));
   }
-  if (file === "/" || file === "") file = "/index.html";
+  if (file === "/" || file === "") {
+    res.writeHead(200, {"Content-Type":"text/plain; charset=utf-8"});
+    return res.end("Kollektiv Poster realtime server is running. WebSocket endpoint: /ws");
+  }
   const safe = path.normalize(file).replace(/^(\.\.[/\\])+/, "");
   const full = path.join(publicDir, safe);
   fs.readFile(full, (err, data) => {

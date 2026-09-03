@@ -40,3 +40,6 @@ DOWNLOAD PNG laddar ner den aktuella postern från canvasen som PNG. Servern beh
 ## Viktigt
 
 Gratis Render-tjänster kan starta om/pausa efter inaktivitet. Vid första anslutningen efter vila kan det ta ungefär en minut. Själva posterbilden och rummet är inte permanent lagrade på servern.
+
+
+v3.2: root and /health now return a simple response; WebSocket endpoint is /ws. Neocities client connects explicitly to wss://.../ws.
