@@ -1,22 +1,7 @@
-# KOLLEKTIV POSTER 3.4
+# KOLLEKTIV POSTER 3.5
 
-Single-origin collaborative poster app for Render.
+1 BAKGRUND · 2 TEXTUR · 3 STICKERS · 4 COPYWRITER · 5 TYPSNITT · 6 TECKNA · 7 PAINTBRUSH · 8 CHAOS · 9 FOTOGRAF.
 
-### New in 3.4
-- 7th role: CHAOS
-- Role changes require approval from every currently connected participant
-- Role changes swap roles when the requested role is occupied
-- More textures: dots, lines, cross, grid, waves, speckle, noise
-- Noise is gray/white instead of painting the image black
-- Multiple independent text layers
-- Text layer color, position and visibility
-- Chaos modes: jitter, warp, glitch, rotation
-- Chaos influences background, texture, graphics, brush and typography
+Roller kan bytas även med en upptagen roll: alla anslutna måste godkänna och då byter de två deltagarna plats. Chatten är vanlig fri text utan snabbknappar. Text kan ligga i flera lager med egen färg/storlek/drop shadow. Fotografrollen använder bildväljare/kamera på enheter som stöder capture.
 
-### Render
-Build: `npm install`
-Start: `npm start`
-
-The app and WebSocket share the same origin. WebSocket endpoint is `/ws`.
-
-State is in memory for the free prototype and resets if the service restarts.
+Render: `npm install` och `npm start`.
