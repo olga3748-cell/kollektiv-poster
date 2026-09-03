@@ -1,37 +1,22 @@
-# KOLLEKTIV POSTER 3.3
+# KOLLEKTIV POSTER 3.4
 
-A single-origin collaborative poster app for Render.
+Single-origin collaborative poster app for Render.
 
-## Deploy on Render
+### New in 3.4
+- 7th role: CHAOS
+- Role changes require approval from every currently connected participant
+- Role changes swap roles when the requested role is occupied
+- More textures: dots, lines, cross, grid, waves, speckle, noise
+- Noise is gray/white instead of painting the image black
+- Multiple independent text layers
+- Text layer color, position and visibility
+- Chaos modes: jitter, warp, glitch, rotation
+- Chaos influences background, texture, graphics, brush and typography
 
-Create a **Web Service** from this GitHub repository.
+### Render
+Build: `npm install`
+Start: `npm start`
 
-- Build command: `npm install`
-- Start command: `npm start`
-- Environment: Node
-- No database required.
+The app and WebSocket share the same origin. WebSocket endpoint is `/ws`.
 
-The server serves the frontend and WebSocket from the same domain:
-
-`https://YOUR-SERVICE.onrender.com/`
-
-WebSocket endpoint:
-
-`wss://YOUR-SERVICE.onrender.com/ws`
-
-## How it works
-
-Six people can enter the same room. Roles are assigned automatically:
-
-1. Background
-2. Texture
-3. Graphics / drawing
-4. Brush
-5. Text
-6. Typography
-
-State is kept in memory, so a server restart clears the current room. This is intentional for the free prototype.
-
-## Free hosting
-
-Render's free web service can host the Node app. A free service may spin down after inactivity, so the first visit after a quiet period can take a little longer.
+State is in memory for the free prototype and resets if the service restarts.
