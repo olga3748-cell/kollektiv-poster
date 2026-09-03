@@ -44,9 +44,11 @@ wss.on('connection',ws=>{
       if(!ROLES.some(x=>x.id===r)||r===c.role)return;
       if(!c.role && taken(r,null,room))return;
       if(proposals.has(room))return;
-      proposals.set(room,{id:nextProposal++,requester:c.id,requestedRole:r,approvals:new Set([c.id])});
+      const proposal={id:nextProposal++,requester:c.id,requestedRole:r,approvals:new Set([c.id]),expiresAt:Date.now()+120000};
+      proposals.set(room,proposal);
       broadcast(room,{type:'roleProposal',proposal:prop(room)});
       finishProposal(room);
+      setTimeout(()=>{const current=proposals.get(room);if(current&&current.id===proposal.id){resetProposal(room)}},120000);
       return;
     }
     if(m.type==='roleApprove'){

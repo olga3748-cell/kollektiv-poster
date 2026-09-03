@@ -71,7 +71,11 @@ function renderPeople(list){
  wrap.append(s,b);e.append(wrap);
 }
 function showProposal(p){
- proposal=p;let e=$('proposal');e.innerHTML='';e.classList.toggle('hidden',!p);if(!p)return;
+ proposal=p;
+ let e=$('proposal');e.innerHTML='';e.classList.toggle('hidden',!p);
+ // Rebuild role controls so a completed/cancelled proposal never leaves the UI stuck.
+ renderPeople(currentPeople);
+ if(!p)return;
  let holder=currentPeople.find(x=>x.role===p.requestedRole);let target=roles[p.requestedRole]||'ROLL';let targetInfo=holder?'P'+holder.id+' har rollen':'rollen är LEDIG';let mine=p.requester===myId;
  e.append(document.createTextNode('ROLLBYTE: P'+p.requester+' vill ha '+target+' · '+targetInfo+' · '+p.approvals.length+'/'+p.total+' godkända'));
  if(!p.approvals.includes(myId)){let b=document.createElement('button');b.textContent='✓ GODKÄNN';b.onclick=()=>send({type:'roleApprove',proposalId:p.id});e.append(b)}
