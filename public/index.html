@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KOLLEKTIV POSTER 4.3</title><link rel="stylesheet" href="/style.css"></head>
+<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KOLLEKTIV POSTER 4.5</title><link rel="stylesheet" href="/style.css"></head>
 <body>
-<header><div><div class="logo">KOLLEKTIV / POSTER_4.3</div><div class="tiny">NIO PERSONER · EN BILD · LIVE</div></div><div id="status" class="status">OFFLINE</div></header>
+<header><div><div class="logo">KOLLEKTIV / POSTER_4.5</div><div class="tiny">NIO PERSONER · EN BILD · LIVE</div></div><div id="status" class="status">OFFLINE</div></header>
 <main>
 <section class="entry panel"><label>RUM</label><input id="room" value="MAIN"><button id="enter">GÅ IN</button><span id="role">ROLL: —</span></section>
 <section class="workspace">
@@ -14,7 +14,16 @@
 </aside></section></main>
 <div id="archiveModal" class="archive-modal hidden" aria-hidden="true"><div class="archive-box"><div class="archive-head"><div class="section-title">ARKIV</div><button id="closeArchive">STÄNG</button></div><div id="archiveGrid" class="archive-grid"></div><div id="archiveDetail" class="archive-detail hidden"></div></div></div>
 <script>
-const C=document.getElementById('poster'),CTX=C.getContext('2d'),SC=document.createElement('canvas'),BC=document.createElement('canvas');SC.width=C.width;SC.height=C.height;BC.width=C.width;BC.height=C.height;const Q=SC.getContext('2d'),B=BC.getContext('2d'),X=document.createElement('canvas').getContext('2d'),$=id=>document.getElementById(id);X.canvas.width=C.width;X.canvas.height=C.height;
+const C=document.getElementById('poster');
+C.width=900; C.height=1200;
+const CTX=C.getContext('2d',{alpha:false});
+const SC=document.createElement('canvas'); SC.width=900; SC.height=1200;
+const BC=document.createElement('canvas'); BC.width=900; BC.height=1200;
+const XC=document.createElement('canvas'); XC.width=900; XC.height=1200;
+const Q=SC.getContext('2d');
+const B=BC.getContext('2d');
+const X=XC.getContext('2d');
+const $=id=>document.getElementById(id);
 let ws=null,myId=null,myRole=null,pendingRoom=null,activeRoom=null,currentPeople=[],proposal=null,drawing=false,pts=[],reconnectTimer=null,heartbeatTimer=null,archiveItems=[],reconnectDelay=1500;
 const roles={1:'BAKGRUND',2:'TEXTUR',3:'STICKERS',4:'COPYWRITER',5:'TYPSNITT',6:'TECKNA',7:'PAINTBRUSH',8:'CHAOS',9:'FOTOGRAF'};
 let S={bg:{mode:'gradient',colorA:'#101010',colorB:'#5a416f',angle:135},texture:{type:'noise',opacity:.1,color:'#fff',scale:18},stickers:[],textLayers:[{id:1,value:'COLLECTIVE SIGNAL',x:50,y:15,color:'#fff',size:42,shadow:true,font:'Arial',weight:'700',height:100,width:100,skew:0}],type:{font:'Arial',weight:'700',height:100,width:100,skew:0},draw:{color:'#fff',strokes:[]},brush:{size:8,opacity:.8,type:'soft',jitter:0,spacing:1},chaos:{amount:0,mode:'glitch',frequency:5},photos:[]};
@@ -110,7 +119,8 @@ const noiseCache=new Map();
 function hexRGB(hex){let h=String(hex||'#ffffff').replace('#','');if(h.length===3)h=h.split('').map(x=>x+x).join('');let n=parseInt(h,16);return [n>>16&255,n>>8&255,n&255]}
 function texture(){let t=S.texture,s=Math.max(4,t.scale);Q.save();Q.globalAlpha=1;Q.fillStyle=t.color;Q.strokeStyle=t.color;Q.lineWidth=1;
  if(t.type==='noise'){
-  let key='noise-'+C.width+'x'+C.height+'-'+t.color;
+  Q.globalCompositeOperation='source-over';
+  let key='noise-v45-'+C.width+'x'+C.height+'-'+t.color;
   let nc=noiseCache.get(key);
   if(!nc){
    nc=document.createElement('canvas');nc.width=C.width;nc.height=C.height;let nctx=nc.getContext('2d'),im=nctx.createImageData(C.width,C.height),d=im.data,[r,g,b]=hexRGB(t.color);
@@ -140,16 +150,33 @@ function stickerOn(ctx,s,chaos){let z=s.size*(1+(chaos.amount/100)*.15),x=C.widt
 function drawOn(ctx,st,preview=false){let p=st.points;if(p.length<2)return;let j=S.brush.jitter/100,layer=S.draw.layers?.find(l=>l.id===st.layerId)||S.draw.layers?.find(l=>l.id===S.draw.activeLayer)||S.draw.layers?.[0];ctx.save();ctx.globalAlpha=S.brush.opacity;ctx.strokeStyle=layer?.color||S.draw.color||'#fff';ctx.lineWidth=S.brush.size;ctx.lineCap='round';if(S.brush.type==='soft'){ctx.shadowBlur=S.brush.size;ctx.shadowColor=ctx.strokeStyle}if(S.brush.type==='dry')ctx.globalAlpha*=.55;ctx.beginPath();p.forEach((q,k)=>{let x=q.x*C.width,y=q.y*C.height;if(S.brush.type==='ink'){x+=Math.sin(k*.7)*j*4;y+=Math.cos(k*.5)*j*4}x+=Math.sin(k*S.brush.spacing)*j*18;y+=Math.cos(k*S.brush.spacing)*j*18;k?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();ctx.restore()}
 function chaos(){let a=(S.chaos.amount||0)/100,f=Math.max(1,S.chaos.frequency||5);X.clearRect(0,0,C.width,C.height);if(!a){X.drawImage(FG,0,0);return}const mode=S.chaos.mode;if(mode==='glow'){X.save();X.shadowColor='rgba(255,255,255,.95)';X.shadowBlur=8+a*38;X.globalAlpha=.35+.45*a;X.drawImage(FG,0,0);X.shadowBlur=2+a*18;X.globalAlpha=1;X.drawImage(FG,0,0);X.restore();return}if(mode==='rotation'){X.save();X.translate(C.width/2,C.height/2);X.rotate(a*.12);X.drawImage(FG,-C.width/2,-C.height/2);X.restore();return}if(mode==='solarize'){X.drawImage(FG,0,0);let im=X.getImageData(0,0,C.width,C.height),d=im.data;for(let i=0;i<d.length;i+=4){d[i]=d[i]<128?255-d[i]:d[i];d[i+1]=d[i+1]<128?255-d[i+1]:d[i+1];d[i+2]=d[i+2]<128?255-d[i+2]:d[i+2]}X.putImageData(im,0,0);return}if(mode==='echo'){X.drawImage(FG,0,0);X.globalAlpha=a*.28;for(let i=1;i<=3;i++)X.drawImage(FG,(i*a*18)%30,(i*a*14)%30);X.globalAlpha=1;return}if(mode==='glitch'||mode==='warp'||mode==='ripple'){let step=Math.max(2,Math.floor(40/f)),amp=a*(mode==='glitch'?120:mode==='ripple'?80:45);for(let y=0;y<C.height;y+=step){let off=Math.sin(y/f*.8)*amp+(mode==='glitch'&&Math.random()<.18?(Math.random()-.5)*amp*2:0);X.drawImage(FG,0,y,C.width,Math.min(step,C.height-y),off,y,C.width,Math.min(step,C.height-y))}return}if(mode==='scatter'){X.drawImage(FG,0,0);let n=Math.floor(10+a*70);for(let i=0;i<n;i++){let x=Math.random()*C.width,y=Math.random()*C.height,w=20+Math.random()*80,h=10+Math.random()*50;X.drawImage(FG,x,y,w,h,x+(Math.random()-.5)*a*60,y+(Math.random()-.5)*a*60,w,h)}return}X.save();X.translate((Math.random()-.5)*a*40,(Math.random()-.5)*a*40);X.drawImage(FG,0,0);X.restore()}
 function drawBackgroundTo(ctx){
- ctx.clearRect(0,0,C.width,C.height);
+ ctx.save(); ctx.globalCompositeOperation='source-over'; ctx.globalAlpha=1; ctx.clearRect(0,0,900,1200);
  const g=S.bg||{};
- if(g.mode==='solid'){ctx.fillStyle=g.colorA||'#101010';ctx.fillRect(0,0,C.width,C.height);return}
+ if(g.mode==='solid'){ctx.fillStyle=g.colorA||'#101010';ctx.fillRect(0,0,900,1200);ctx.restore();return}
  const a=(g.angle||0)*Math.PI/180,dx=Math.cos(a),dy=Math.sin(a);
  const cx=C.width/2,cy=C.height/2,len=Math.abs(C.width*dx)+Math.abs(C.height*dy);
  const grad=ctx.createLinearGradient(cx-dx*len/2,cy-dy*len/2,cx+dx*len/2,cy+dy*len/2);
  grad.addColorStop(0,g.colorA||'#101010');grad.addColorStop(1,g.colorB||'#5a416f');
- ctx.fillStyle=grad;ctx.fillRect(0,0,C.width,C.height);
+ ctx.fillStyle=grad;ctx.fillRect(0,0,900,1200);
+ ctx.restore();
 }
-function render(){normalizeState();drawBackgroundTo(B);Q.clearRect(0,0,C.width,C.height);Q.drawImage(BC,0,0);texture();drawForeground();X.clearRect(0,0,C.width,C.height);chaos();Q.drawImage(X,0,0);if(drawing&&pts.length>1)drawOn(Q,{points:pts,layerId:S.draw.activeLayer},true);CTX.clearRect(0,0,C.width,C.height);CTX.drawImage(Q.canvas,0,0)}
+function render(){
+  try{
+    normalizeState();
+    // Bakgrund renderas alltid först till ett separat lager.
+    B.save(); B.globalCompositeOperation='source-over'; B.globalAlpha=1; drawBackgroundTo(B); B.restore();
+    Q.save(); Q.globalCompositeOperation='source-over'; Q.globalAlpha=1; Q.clearRect(0,0,900,1200); Q.drawImage(BC,0,0,900,1200); Q.restore();
+    texture();
+    drawForeground();
+    X.save(); X.globalCompositeOperation='source-over'; X.globalAlpha=1; X.clearRect(0,0,900,1200); chaos(); X.restore();
+    Q.save(); Q.globalCompositeOperation='source-over'; Q.globalAlpha=1; Q.drawImage(XC,0,0,900,1200); if(drawing&&pts.length>1)drawOn(Q,{points:pts,layerId:S.draw.activeLayer},true); Q.restore();
+    CTX.save(); CTX.globalCompositeOperation='source-over'; CTX.globalAlpha=1; CTX.clearRect(0,0,900,1200); CTX.drawImage(SC,0,0,900,1200); CTX.restore();
+  }catch(err){
+    console.error('Renderfel',err);
+    CTX.save(); CTX.globalCompositeOperation='source-over'; CTX.globalAlpha=1; CTX.clearRect(0,0,900,1200);
+    const g=CTX.createLinearGradient(0,0,900,1200); g.addColorStop(0,S.bg?.colorA||'#101010'); g.addColorStop(1,S.bg?.colorB||'#5a416f'); CTX.fillStyle=g; CTX.fillRect(0,0,900,1200); CTX.restore();
+  }
+}
 function point(e){let r=C.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height}}
 C.onpointerdown=e=>{if(myRole!==6)return;drawing=true;pts=[point(e)];C.setPointerCapture(e.pointerId)};
 C.onpointermove=e=>{if(!drawing)return;pts.push(point(e));scheduleRender()};
