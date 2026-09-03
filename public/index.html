@@ -12,7 +12,7 @@
 <div class="panel chat-panel"><div class="section-title">CHAT</div><div id="chat"></div><div class="chatrow"><input id="chatInput" placeholder="skriv meddelande..."><button id="chatSend">SKICKA</button></div></div>
 <div class="panel actions"><button id="saveArchive">SPARA POSTER</button><button id="openArchive">ARKIV</button><button id="download">↓ LADDA NER PNG</button><button id="clear" class="hidden">RENSA TECKNING</button></div>
 </aside></section></main>
-<div id="archiveModal" class="archive-modal hidden"><div class="archive-box"><div class="archive-head"><div class="section-title">ARKIV</div><button id="closeArchive">STÄNG</button></div><div id="archiveGrid" class="archive-grid"></div><div id="archiveDetail" class="archive-detail hidden"></div></div></div>
+<div id="archiveModal" class="archive-modal hidden" aria-hidden="true"><div class="archive-box"><div class="archive-head"><div class="section-title">ARKIV</div><button id="closeArchive">STÄNG</button></div><div id="archiveGrid" class="archive-grid"></div><div id="archiveDetail" class="archive-detail hidden"></div></div></div>
 <script>
 const C=document.getElementById('poster'),X=C.getContext('2d'),SC=document.createElement('canvas');SC.width=C.width;SC.height=C.height;const Q=SC.getContext('2d'),$=id=>document.getElementById(id);
 let ws=null,myId=null,myRole=null,pendingRoom=null,activeRoom=null,currentPeople=[],proposal=null,drawing=false,pts=[],reconnectTimer=null,heartbeatTimer=null,archiveItems=[];
@@ -170,8 +170,12 @@ function loadThumb(a,el){if(a.thumb)el.style.backgroundImage=`url(${a.thumb})`}
 function showArchiveItem(a){const d=$('archiveDetail');d.classList.remove('hidden');const labels={deltagare:'Deltagare',rollbyten:'Rollbyten',kaos:'Kaos',textlager:'Textlager',foton:'Foton',stickers:'Stickers',streck:'Streck'};d.innerHTML='<button id="backArchive">← TILLBAKA</button><h3>'+esc(a.title)+'</h3><img src="'+a.image+'"><div class="dna">'+Object.entries(a.dna||{}).map(([k,v])=>'<span><b>'+esc(labels[k]||k)+'</b> '+esc(String(v))+'</span>').join('')+'</div>';d.querySelector('#backArchive').onclick=()=>{d.classList.add('hidden');renderArchive()}}
 function esc(v){return String(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 $('saveArchive').onclick=saveArchive;
-$('openArchive').onclick=()=>{$('archiveModal').classList.remove('hidden');$('archiveDetail').classList.add('hidden');send({type:'archiveList'})};
-$('closeArchive').onclick=()=>{$('archiveModal').classList.add('hidden')};
+function openArchive(){const m=$('archiveModal');m.classList.remove('hidden');m.setAttribute('aria-hidden','false');$('archiveDetail').classList.add('hidden');send({type:'archiveList'})}
+function closeArchive(){const m=$('archiveModal');m.classList.add('hidden');m.setAttribute('aria-hidden','true')}
+$('openArchive').onclick=openArchive;
+$('closeArchive').onclick=closeArchive;
+$('archiveModal').addEventListener('click',e=>{if(e.target.id==='archiveModal')closeArchive()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape' && !$('archiveModal').classList.contains('hidden'))closeArchive()});
 // Camera
 let camStream=null;
 async function openCamera(){
