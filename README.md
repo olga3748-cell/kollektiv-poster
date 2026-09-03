@@ -1,4 +1,4 @@
-# Kollektiv Poster v4.1
+# Kollektiv Poster v4.2
 
 Kollektiv Poster är en gemensam posterverkstad i webbläsaren. Nio roller arbetar samtidigt i samma rum.
 
@@ -13,14 +13,18 @@ Kollektiv Poster är en gemensam posterverkstad i webbläsaren. Nio roller arbet
 8. CHAOS
 9. FOTOGRAF
 
-## Rollbyte
-Rollbyten sker genom en gemensam godkännandeprocess. En ledig roll kan också begäras. Alla deltagare i samma rum ser vilka som har godkänt och vilka som väntar.
+Varje roll kan bara finnas en gång per rum. Roller delas ut slumpmässigt när man går in. Vid rollbyte godkänner alla deltagare först; därefter lottas en ny roll till den som begärt bytet.
 
-## CHAOS
-CHAOS lägger ett globalt filter ovanpå hela den färdiga postern. Filter: glitch, ripple, warp, jitter, rotation, scatter, solarize och echo. Mängd och frekvens styr effekten.
+## Nya funktioner
+- FOTOGRAF: opacitet, svartvitt, invert, sepia, kontrast, tröskel, raster, färgton, bredd/höjd, förvridning och rotation.
+- STICKERS: stjärna, hjärta, cirkel, fyrkant och spiral.
+- TECKNA: flera separata teckningslager med egna färger.
+- TEXTUR: ASCII-textur samt tidigare texturer.
+- CHAOS: glow samt övriga filter. CHAOS påverkar endast förgrunden, inte bakgrund eller bakgrundstextur.
+- Chatt är borttagen.
 
 ## Arkiv
-En färdig poster kan sparas i rummets arkiv. Arkivet visar miniatyrer och poster-DNA med deltagare, rollbyten, kaos, textlager, foton, stickers och streck. Arkivet ligger i serverns minne och återställs vid omstart/deploy.
+En färdig poster kan sparas i rummets arkiv. Arkivet visar miniatyrer och poster-DNA. Arkivet ligger i serverns minne och återställs vid omstart/deploy.
 
 ## Start
 ```bash
