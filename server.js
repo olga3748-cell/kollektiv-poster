@@ -23,8 +23,10 @@ function archiveList(room){return getMeta(room).archive.map(a=>({id:a.id,title:a
 const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://'+req.headers.host);if(u.pathname==='/health'){res.writeHead(200,{'Content-Type':'application/json'});return res.end(JSON.stringify({ok:true,clients:clients.size}))}let f=u.pathname==='/'?'/index.html':u.pathname,p=path.normalize(path.join(PUBLIC,f));if(!p.startsWith(PUBLIC))return res.end('Forbidden');fs.readFile(p,(e,d)=>{if(e){res.writeHead(404);return res.end('Not found')}res.writeHead(200,{'Content-Type':p.endsWith('.html')?'text/html; charset=utf-8':p.endsWith('.css')?'text/css; charset=utf-8':'application/octet-stream','Cache-Control':'no-cache'});res.end(d)})});
 const wss=new WebSocket.Server({server,path:'/ws'});
 wss.on('connection',ws=>{const c={id:nextClient++,role:null,room:null};clients.set(ws,c);send(ws,{type:'hello',clientId:c.id,roles:ROLES});
+ ws.on('error',()=>{});
  ws.on('message',raw=>{let m;try{m=JSON.parse(raw)}catch{return};
-  if(m.type==='join'){c.room=String(m.room||'MAIN').trim().slice(0,40)||'MAIN';const state=getState(c.room);getMeta(c.room);c.role=assign(ws,Number(m.requestedRole)||null,c.room);send(ws,{type:'joined',role:c.role,state,proposal:prop(c.room),clients:presence(c.room),archive:archiveList(c.room)});broadcast(c.room,{type:'presence',clients:presence(c.room)});if(proposals.has(c.room))broadcast(c.room,{type:'roleProposal',proposal:prop(c.room)});return}
+  let room=c.room; let state=room?getState(room):null;
+  if(m.type==='join'){c.room=String(m.room||'MAIN').trim().slice(0,40)||'MAIN';room=c.room;state=getState(room);getMeta(room);c.role=assign(ws,Number(m.requestedRole)||null,c.room);send(ws,{type:'joined',role:c.role,state,proposal:prop(c.room),clients:presence(c.room),archive:archiveList(c.room)});broadcast(c.room,{type:'presence',clients:presence(c.room)});if(proposals.has(c.room))broadcast(c.room,{type:'roleProposal',proposal:prop(c.room)});return}
   if(m.type==='roleRequest'){if(!c.role||proposals.has(room))return;const proposal={id:nextProposal++,requester:c.id,requestedRole:null,approvals:new Set([c.id])};proposals.set(room,proposal);broadcast(room,{type:'roleProposal',proposal:prop(room)});finishProposal(room);setTimeout(()=>{const current=proposals.get(room);if(current&&current.id===proposal.id)resetProposal(room)},120000);return}
   if(m.type==='roleApprove'){const p=proposals.get(room);if(!p||Number(m.proposalId)!==p.id)return;if(!roomClients(room).some(([,x])=>x.id===c.id))return;p.approvals.add(c.id);if(!finishProposal(room))broadcast(room,{type:'roleProposal',proposal:prop(room)});return}
   if(m.type==='roleCancel'&&proposals.get(room)?.requester===c.id){resetProposal(room);return}
@@ -60,4 +62,4 @@ wss.on('connection',ws=>{const c={id:nextClient++,role:null,room:null};clients.s
  });
  ws.on('close',()=>{const room=c.room;clients.delete(ws);if(room){const p=proposals.get(room);if(p){p.approvals.delete(c.id);if(p.requester===c.id)resetProposal(room);else broadcast(room,{type:'roleProposal',proposal:prop(room)})}broadcast(room,{type:'presence',clients:presence(room)})}})
 });
-setInterval(()=>clients.forEach((_,w)=>w.readyState===WebSocket.OPEN&&w.ping()),25000);server.listen(PORT,'0.0.0.0',()=>console.log('Kollektiv Poster v4.1 running on '+PORT));
+setInterval(()=>clients.forEach((_,w)=>w.readyState===WebSocket.OPEN&&w.ping()),25000);server.listen(PORT,'0.0.0.0',()=>console.log('Kollektiv Poster v4.3 running on '+PORT));

@@ -1,4 +1,4 @@
-# Kollektiv Poster v4.2
+# Kollektiv Poster v4.3
 
 Kollektiv Poster är en gemensam posterverkstad i webbläsaren. Nio roller arbetar samtidigt i samma rum.
 
@@ -32,3 +32,11 @@ npm install
 npm start
 ```
 Öppna sedan serverns adress i webbläsaren.
+
+
+## v4.3
+- Stabilare WebSocket-anslutning och återanslutning.
+- Postern behåller sitt innehåll visuellt vid tillfälligt avbrott.
+- Rendering byggs inte om vid varje inkommande justering, vilket minskar UI-fladder.
+- Bakgrundsrendering är återställd.
+- Noise använder ett transparent lager så bakgrundsfärgen syns.
