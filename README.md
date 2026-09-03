@@ -1,45 +1,37 @@
-# Kollektiv Poster v3
+# KOLLEKTIV POSTER 3.3
 
-Målet: Neocities som frontend + Render som realtidsserver.
+A single-origin collaborative poster app for Render.
 
-## 1. Deploya servern på Render
+## Deploy on Render
 
-Lägg innehållet i `server/` i ett GitHub-repo. På Render:
-- New -> Web Service
-- välj repo
-- Build Command: `npm install`
-- Start Command: `npm start`
-- Free plan
+Create a **Web Service** from this GitHub repository.
 
-Render stödjer WebSockets på Web Services. Servern använder PORT från miljön.
+- Build command: `npm install`
+- Start command: `npm start`
+- Environment: Node
+- No database required.
 
-Kopiera sedan din Render-adress, t.ex. https://kollektiv-poster-server.onrender.com
+The server serves the frontend and WebSocket from the same domain:
 
-## 2. Koppla Neocities
+`https://YOUR-SERVICE.onrender.com/`
 
-Öppna `neocities/index.html` och ersätt:
+WebSocket endpoint:
 
-%%SERVER_URL%%
+`wss://YOUR-SERVICE.onrender.com/ws`
 
-med din Render-adress.
+## How it works
 
-Exempel:
-const SERVER_URL = "https://kollektiv-poster-server.onrender.com";
+Six people can enter the same room. Roles are assigned automatically:
 
-Ladda upp `index.html` och `style.css` till Neocities.
+1. Background
+2. Texture
+3. Graphics / drawing
+4. Brush
+5. Text
+6. Typography
 
-## 3. Test
+State is kept in memory, so a server restart clears the current room. This is intentional for the free prototype.
 
-Öppna Neocities-sidan på två olika enheter. Skriv samma rumsnamn och tryck ENTER ROOM.
-De första sex personerna får roller 1-6 automatiskt.
+## Free hosting
 
-## PNG
-
-DOWNLOAD PNG laddar ner den aktuella postern från canvasen som PNG. Servern behöver inte spara filen.
-
-## Viktigt
-
-Gratis Render-tjänster kan starta om/pausa efter inaktivitet. Vid första anslutningen efter vila kan det ta ungefär en minut. Själva posterbilden och rummet är inte permanent lagrade på servern.
-
-
-v3.2: root and /health now return a simple response; WebSocket endpoint is /ws. Neocities client connects explicitly to wss://.../ws.
+Render's free web service can host the Node app. A free service may spin down after inactivity, so the first visit after a quiet period can take a little longer.

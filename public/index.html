@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KOLLEKTIV POSTER 3.3</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div>
+    <div class="logo">KOLLEKTIV / POSTER_3.3</div>
+    <div class="tiny">SIX PEOPLE · ONE IMAGE · LIVE</div>
+  </div>
+  <div id="status" class="status">OFFLINE</div>
+</header>
+
+<main>
+  <section class="entry panel">
+    <label>ROOM</label>
+    <input id="room" value="MAIN" maxlength="40">
+    <button id="enter">ENTER ROOM</button>
+    <span id="roleLabel">ROLE: —</span>
+  </section>
+
+  <section class="workspace">
+    <div class="poster-wrap">
+      <canvas id="poster" width="900" height="1200"></canvas>
+    </div>
+
+    <aside class="side">
+      <div class="panel">
+        <div class="section-title">YOUR ROLE</div>
+        <div id="controls"></div>
+      </div>
+
+      <div class="panel chat-panel">
+        <div class="section-title">CHAT / SIGNALS</div>
+        <div id="chat"></div>
+        <div class="quick">
+          <button data-chat="more chaos">↗ CHAOS</button>
+          <button data-chat="less">↓ LESS</button>
+          <button data-chat="MORE">++ MORE</button>
+          <button data-chat="move it">↔ MOVE</button>
+        </div>
+        <div class="chat-input">
+          <input id="chatText" maxlength="240" placeholder="say something...">
+          <button id="sendChat">SEND</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <button id="download">↓ DOWNLOAD PNG</button>
+        <button id="clear" class="danger hidden">CLEAR DRAWING</button>
+      </div>
+
+      <div class="panel tiny">
+        <div>1 BACKGROUND</div>
+        <div>2 TEXTURE</div>
+        <div>3 GRAPHICS</div>
+        <div>4 BRUSH</div>
+        <div>5 TEXT</div>
+        <div>6 TYPE</div>
+      </div>
+    </aside>
+  </section>
+</main>
+
+<script>
+const canvas = document.getElementById("poster");
+const ctx = canvas.getContext("2d");
+const statusEl = document.getElementById("status");
+const controls = document.getElementById("controls");
+const chat = document.getElementById("chat");
+const roleLabel = document.getElementById("roleLabel");
+const roomInput = document.getElementById("room");
+
+let ws = null;
+let role = null;
+let pendingRoom = null;
+let state = {
+  bg:{mode:"gradient",colorA:"#0a0a0a",colorB:"#3a2a55",angle:135},
+  texture:{type:"noise",opacity:.16,color:"#fff",scale:18},
+  brush:{size:8,opacity:.8,type:"soft"},
+  text:{value:"COLLECTIVE SIGNAL",x:50,y:16},
+  type:{font:"Arial",weight:700,size:42,letterSpacing:2},
+  strokes:[]
+};
+let drawing = false;
+let currentPoints = [];
+
+function setStatus(s) {
+  statusEl.textContent = s;
+  statusEl.className = "status " + s.toLowerCase();
+}
+
+function connect() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  setStatus("CONNECTING");
+  ws = new WebSocket(proto + "//" + location.host + "/ws");
+
+  ws.onopen = () => {
+    setStatus("ONLINE");
+    if (pendingRoom !== null) {
+      ws.send(JSON.stringify({type:"join", room:pendingRoom}));
+      pendingRoom = null;
+    }
+  };
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === "hello") {
+      state = m.state;
+      render();
+    } else if (m.type === "joined") {
+      role = m.role;
+      state = m.state;
+      roleLabel.textContent = "ROLE: " + roleName(role);
+      buildControls();
+      render();
+      document.getElementById("clear").classList.toggle("hidden", role !== 3);
+    } else if (m.type === "state") {
+      state[m.key] = m.value;
+      render();
+      buildControls();
+    } else if (m.type === "stroke") {
+      state.strokes.push(m.stroke);
+      render();
+    } else if (m.type === "clear") {
+      state.strokes = [];
+      render();
+    } else if (m.type === "chat") {
+      addChat((m.from ? "P" + m.from : "??") + ": " + m.text);
+    }
+  };
+  ws.onclose = () => {
+    setStatus("OFFLINE");
+    role = null;
+    roleLabel.textContent = "ROLE: —";
+  };
+  ws.onerror = () => setStatus("ERROR");
+}
+
+function send(o) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(o));
+}
+
+document.getElementById("enter").onclick = () => {
+  const room = roomInput.value.trim() || "MAIN";
+  pendingRoom = room;
+  connect();
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    send({type:"join", room});
+    pendingRoom = null;
+  }
+};
+
+function roleName(n) {
+  return ({1:"BACKGROUND",2:"TEXTURE",3:"GRAPHICS",4:"BRUSH",5:"TEXT",6:"TYPE"})[n] || "—";
+}
+
+function update(key, patch) {
+  state[key] = {...state[key], ...patch};
+  send({type:"setState", key, value:patch});
+  render();
+}
+
+function control(label, input) {
+  const row = document.createElement("label");
+  row.className = "control";
+  const title = document.createElement("span");
+  title.textContent = label;
+  row.append(title, input);
+  controls.appendChild(row);
+}
+
+function slider(key, prop, label, min, max, step) {
+  const input = document.createElement("input");
+  input.type = "range"; input.min=min; input.max=max; input.step=step; input.value=state[key][prop];
+  const val = document.createElement("b");
+  val.textContent = input.value;
+  input.oninput = () => { val.textContent=input.value; update(key,{[prop]:Number(input.value)}); };
+  const wrap = document.createElement("div"); wrap.className="slider";
+  wrap.append(input,val);
+  control(label,wrap);
+}
+
+function color(key, prop, label) {
+  const input = document.createElement("input");
+  input.type="color"; input.value=state[key][prop];
+  input.oninput=()=>update(key,{[prop]:input.value});
+  control(label,input);
+}
+
+function select(key, prop, label, options) {
+  const input=document.createElement("select");
+  options.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;input.appendChild(o)});
+  input.value=state[key][prop];
+  input.onchange=()=>update(key,{[prop]:input.value});
+  control(label,input);
+}
+
+function buildControls() {
+  controls.innerHTML="";
+  if (!role) return;
+  if (role===1) {
+    select("bg","mode","MODE",["gradient","solid"]);
+    color("bg","colorA","COLOR A");
+    color("bg","colorB","COLOR B");
+    slider("bg","angle","ANGLE",0,360,1);
+  }
+  if (role===2) {
+    select("texture","type","TEXTURE",["noise","dots","lines","none"]);
+    color("texture","color","COLOR");
+    slider("texture","opacity","OPACITY",0,1,.01);
+    slider("texture","scale","SCALE",4,60,1);
+  }
+  if (role===3) {
+    const note=document.createElement("div"); note.className="hint"; note.textContent="DRAW DIRECTLY ON THE POSTER";
+    controls.appendChild(note);
+  }
+  if (role===4) {
+    select("brush","type","BRUSH",["soft","hard","ink"]);
+    slider("brush","size","THICKNESS",1,80,1);
+    slider("brush","opacity","OPACITY",0,1,.01);
+  }
+  if (role===5) {
+    const input=document.createElement("input"); input.value=state.text.value;
+    input.onchange=()=>update("text",{value:input.value});
+    control("TEXT",input);
+    slider("text","x","X",0,100,1);
+    slider("text","y","Y",0,100,1);
+  }
+  if (role===6) {
+    select("type","font","FONT",["Arial","Georgia","Courier New","Trebuchet MS","Impact"]);
+    select("type","weight","WEIGHT",["400","500","700","900"]);
+    slider("type","size","SIZE",12,120,1);
+    slider("type","letterSpacing","SPACING",0,20,1);
+  }
+}
+
+function addChat(t) {
+  const d=document.createElement("div"); d.textContent=t; chat.appendChild(d);
+  chat.scrollTop=chat.scrollHeight;
+  while(chat.children.length>40) chat.firstChild.remove();
+}
+document.getElementById("sendChat").onclick=()=>{
+  const input=document.getElementById("chatText"); const t=input.value.trim();
+  if(t){send({type:"chat",text:t});input.value=""}
+};
+document.getElementById("chatText").addEventListener("keydown",e=>{if(e.key==="Enter")document.getElementById("sendChat").click()});
+document.querySelectorAll("[data-chat]").forEach(b=>b.onclick=()=>send({type:"chat",text:b.dataset.chat}));
+
+function hexToRgba(hex,a){
+  const n=parseInt(hex.slice(1),16);
+  return `rgba(${n>>16},${(n>>8)&255},${n&255},${a})`;
+}
+
+function render() {
+  const w=canvas.width,h=canvas.height,b=state.bg;
+  if(b.mode==="solid") {
+    ctx.fillStyle=b.colorA; ctx.fillRect(0,0,w,h);
+  } else {
+    const r=b.angle*Math.PI/180;
+    const x1=w/2-Math.cos(r)*w, y1=h/2-Math.sin(r)*h;
+    const x2=w/2+Math.cos(r)*w, y2=h/2+Math.sin(r)*h;
+    const g=ctx.createLinearGradient(x1,y1,x2,y2);
+    g.addColorStop(0,b.colorA);g.addColorStop(1,b.colorB);
+    ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+  }
+
+  const t=state.texture;
+  ctx.save();
+  ctx.globalAlpha=t.opacity;
+  ctx.strokeStyle=t.color; ctx.fillStyle=t.color;
+  const s=Math.max(4,t.scale);
+  if(t.type==="dots"){
+    for(let y=0;y<h;y+=s)for(let x=0;x<w;x+=s){ctx.beginPath();ctx.arc(x,y,1.2,0,Math.PI*2);ctx.fill();}
+  } else if(t.type==="lines"){
+    for(let x=-h;x<w;x+=s*2){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x+h,h);ctx.stroke();}
+  } else if(t.type==="noise"){
+    const img=ctx.createImageData(w,h), d=img.data;
+    for(let i=0;i<d.length;i+=4){const v=Math.random()>0.5?255:0;d[i]=d[i+1]=d[i+2]=v;d[i+3]=Math.floor(255*t.opacity);}
+    ctx.putImageData(img,0,0);
+  }
+  ctx.restore();
+
+  for(const st of state.strokes||[]) drawStroke(st);
+
+  const tx=state.text;
+  ctx.save();
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.font=`${state.type.weight} ${state.type.size}px "${state.type.font}"`;
+  ctx.fillStyle="#fff";
+  ctx.shadowColor="rgba(0,0,0,.35)";ctx.shadowBlur=8;
+  ctx.fillText(tx.value, w*tx.x/100, h*tx.y/100);
+  ctx.restore();
+}
+
+function drawStroke(st) {
+  const p=st.points;if(!p||p.length<2)return;
+  ctx.save();
+  ctx.lineCap="round";ctx.lineJoin="round";
+  ctx.globalAlpha=state.brush.opacity;
+  ctx.strokeStyle="#ffffff";
+  ctx.lineWidth=state.brush.size;
+  if(state.brush.type==="soft"){ctx.shadowBlur=state.brush.size*1.4;ctx.shadowColor="#fff";}
+  if(state.brush.type==="ink"){ctx.lineWidth*=.75;}
+  ctx.beginPath();ctx.moveTo(p[0].x*canvas.width,p[0].y*canvas.height);
+  for(let i=1;i<p.length;i++)ctx.lineTo(p[i].x*canvas.width,p[i].y*canvas.height);
+  ctx.stroke();ctx.restore();
+}
+
+canvas.addEventListener("pointerdown",e=>{
+  if(role!==3)return;
+  drawing=true;currentPoints=[point(e)];canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove",e=>{
+  if(!drawing)return;currentPoints.push(point(e));render();
+  drawStroke({points:currentPoints});
+});
+canvas.addEventListener("pointerup",()=>{
+  if(!drawing)return;drawing=false;
+  if(currentPoints.length>1)send({type:"stroke",points:currentPoints});
+  currentPoints=[];
+});
+function point(e){const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height}}
+
+document.getElementById("clear").onclick=()=>send({type:"clear"});
+document.getElementById("download").onclick=()=>{
+  render();
+  const a=document.createElement("a");
+  a.download="kollektiv-poster.png";a.href=canvas.toDataURL("image/png");a.click();
+};
+
+setStatus("OFFLINE");
+render();
+</script>
+</body>
+</html>
