@@ -1,42 +1,5 @@
-# Kollektiv Poster v4.3
+# Kollektiv Poster v4.4
 
-Kollektiv Poster är en gemensam posterverkstad i webbläsaren. Nio roller arbetar samtidigt i samma rum.
+Rollbyte återställt till riktad funktion: en deltagare klickar på valfri annan roll, även om rollen är upptagen. Alla deltagare i rummet godkänner. När alla godkänt byter den som begärt roll med den som har målrollen; om målrollen är ledig tar deltagaren den. Ingen slumpning sker vid rollbyte.
 
-## Roller
-1. BAKGRUND
-2. TEXTUR
-3. STICKERS
-4. COPYWRITER
-5. TYPSNITT
-6. TECKNA
-7. PAINTBRUSH
-8. CHAOS
-9. FOTOGRAF
-
-Varje roll kan bara finnas en gång per rum. Roller delas ut slumpmässigt när man går in. Vid rollbyte godkänner alla deltagare först; därefter lottas en ny roll till den som begärt bytet.
-
-## Nya funktioner
-- FOTOGRAF: opacitet, svartvitt, invert, sepia, kontrast, tröskel, raster, färgton, bredd/höjd, förvridning och rotation.
-- STICKERS: stjärna, hjärta, cirkel, fyrkant och spiral.
-- TECKNA: flera separata teckningslager med egna färger.
-- TEXTUR: ASCII-textur samt tidigare texturer.
-- CHAOS: glow samt övriga filter. CHAOS påverkar endast förgrunden, inte bakgrund eller bakgrundstextur.
-- Chatt är borttagen.
-
-## Arkiv
-En färdig poster kan sparas i rummets arkiv. Arkivet visar miniatyrer och poster-DNA. Arkivet ligger i serverns minne och återställs vid omstart/deploy.
-
-## Start
-```bash
-npm install
-npm start
-```
-Öppna sedan serverns adress i webbläsaren.
-
-
-## v4.3
-- Stabilare WebSocket-anslutning och återanslutning.
-- Postern behåller sitt innehåll visuellt vid tillfälligt avbrott.
-- Rendering byggs inte om vid varje inkommande justering, vilket minskar UI-fladder.
-- Bakgrundsrendering är återställd.
-- Noise använder ett transparent lager så bakgrundsfärgen syns.
+Övriga funktioner från v4.3 är oförändrade.

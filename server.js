@@ -14,11 +14,26 @@ const taken=(r,e,room)=>roomClients(room).some(([w,c])=>w!==e&&c.role===r);
 function assign(w,r,room){const free=ROLES.map(x=>x.id).filter(id=>!taken(id,w,room));return free.length?free[Math.floor(Math.random()*free.length)]:null}
 function prop(room){let p=proposals.get(room);if(!p)return null;const members=roomClients(room).map(([,x])=>({id:x.id,role:x.role}));return {id:p.id,requester:p.requester,requestedRole:p.requestedRole,approvals:[...p.approvals],total:members.length,members}}
 function resetProposal(room){if(proposals.has(room)){proposals.delete(room);broadcast(room,{type:'roleProposal',proposal:null})}}
-function finishProposal(room){const p=proposals.get(room);if(!p)return false;const members=roomClients(room).map(([,x])=>x);if(!members.length){resetProposal(room);return false}if(!members.every(x=>p.approvals.has(x.id)))return false;const a=members.find(x=>x.id===p.requester);if(!a){resetProposal(room);return false}
-  const free=ROLES.map(r=>r.id).filter(r=>!members.some(x=>x.role===r));
-  if(free.length){a.role=free[Math.floor(Math.random()*free.length)];}
-  else {const others=members.filter(x=>x.id!==a.id);if(!others.length){resetProposal(room);return false}const b=others[Math.floor(Math.random()*others.length)];const old=a.role;a.role=b.role;b.role=old;}
-  getMeta(room).roleChanges++;proposals.delete(room);roomClients(room).forEach(([w,x])=>send(w,{type:'roleChanged',role:x.role,clients:presence(room)}));broadcast(room,{type:'roleProposal',proposal:null});return true}
+function finishProposal(room){
+  const p=proposals.get(room); if(!p)return false;
+  const members=roomClients(room).map(([,x])=>x);
+  if(!members.length){resetProposal(room);return false}
+  if(!members.every(x=>p.approvals.has(x.id)))return false;
+  const a=members.find(x=>x.id===p.requester);
+  if(!a){resetProposal(room);return false}
+  const target=Number(p.requestedRole);
+  if(!ROLES.some(r=>r.id===target)){resetProposal(room);return false}
+  if(a.role===target){proposals.delete(room);broadcast(room,{type:'roleProposal',proposal:null});return true}
+  const b=members.find(x=>x.id!==a.id && x.role===target);
+  const old=a.role;
+  a.role=target;
+  if(b) b.role=old;
+  getMeta(room).roleChanges++;
+  proposals.delete(room);
+  roomClients(room).forEach(([w,x])=>send(w,{type:'roleChanged',role:x.role,clients:presence(room)}));
+  broadcast(room,{type:'roleProposal',proposal:null});
+  return true;
+}
 function archiveList(room){return getMeta(room).archive.map(a=>({id:a.id,title:a.title,createdAt:a.createdAt,dna:a.dna,thumb:a.thumb}))}
 const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://'+req.headers.host);if(u.pathname==='/health'){res.writeHead(200,{'Content-Type':'application/json'});return res.end(JSON.stringify({ok:true,clients:clients.size}))}let f=u.pathname==='/'?'/index.html':u.pathname,p=path.normalize(path.join(PUBLIC,f));if(!p.startsWith(PUBLIC))return res.end('Forbidden');fs.readFile(p,(e,d)=>{if(e){res.writeHead(404);return res.end('Not found')}res.writeHead(200,{'Content-Type':p.endsWith('.html')?'text/html; charset=utf-8':p.endsWith('.css')?'text/css; charset=utf-8':'application/octet-stream','Cache-Control':'no-cache'});res.end(d)})});
 const wss=new WebSocket.Server({server,path:'/ws'});
@@ -27,7 +42,17 @@ wss.on('connection',ws=>{const c={id:nextClient++,role:null,room:null};clients.s
  ws.on('message',raw=>{let m;try{m=JSON.parse(raw)}catch{return};
   let room=c.room; let state=room?getState(room):null;
   if(m.type==='join'){c.room=String(m.room||'MAIN').trim().slice(0,40)||'MAIN';room=c.room;state=getState(room);getMeta(room);c.role=assign(ws,Number(m.requestedRole)||null,c.room);send(ws,{type:'joined',role:c.role,state,proposal:prop(c.room),clients:presence(c.room),archive:archiveList(c.room)});broadcast(c.room,{type:'presence',clients:presence(c.room)});if(proposals.has(c.room))broadcast(c.room,{type:'roleProposal',proposal:prop(c.room)});return}
-  if(m.type==='roleRequest'){if(!c.role||proposals.has(room))return;const proposal={id:nextProposal++,requester:c.id,requestedRole:null,approvals:new Set([c.id])};proposals.set(room,proposal);broadcast(room,{type:'roleProposal',proposal:prop(room)});finishProposal(room);setTimeout(()=>{const current=proposals.get(room);if(current&&current.id===proposal.id)resetProposal(room)},120000);return}
+  if(m.type==='roleRequest'){
+    if(!c.role||proposals.has(room))return;
+    const requestedRole=Number(m.requestedRole);
+    if(!ROLES.some(r=>r.id===requestedRole) || requestedRole===c.role)return;
+    const proposal={id:nextProposal++,requester:c.id,requestedRole,approvals:new Set([c.id])};
+    proposals.set(room,proposal);
+    broadcast(room,{type:'roleProposal',proposal:prop(room)});
+    finishProposal(room);
+    setTimeout(()=>{const current=proposals.get(room);if(current&&current.id===proposal.id)resetProposal(room)},120000);
+    return;
+  }
   if(m.type==='roleApprove'){const p=proposals.get(room);if(!p||Number(m.proposalId)!==p.id)return;if(!roomClients(room).some(([,x])=>x.id===c.id))return;p.approvals.add(c.id);if(!finishProposal(room))broadcast(room,{type:'roleProposal',proposal:prop(room)});return}
   if(m.type==='roleCancel'&&proposals.get(room)?.requester===c.id){resetProposal(room);return}
   if(m.type==='archiveList'){send(ws,{type:'archiveList',archive:archiveList(room)});return}
