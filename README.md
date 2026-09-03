@@ -1,5 +1,16 @@
-# Kollektiv Poster v4.4
+# Kollektiv Poster v4.6
 
-Rollbyte återställt till riktad funktion: en deltagare klickar på valfri annan roll, även om rollen är upptagen. Alla deltagare i rummet godkänner. När alla godkänt byter den som begärt roll med den som har målrollen; om målrollen är ledig tar deltagaren den. Ingen slumpning sker vid rollbyte.
+Utgår från den stabilare VERSION 4_1 FIX och reparerar/förenklar funktionerna.
 
-Övriga funktioner från v4.5 är oförändrade.
+- Bakgrund och textur
+- Stickers inklusive spiral, med storlek/färg/placering/rotation
+- Flera textlager och 10 typsnitt
+- Flera teckningslager med egen färg per lager
+- Fotograf med kamera, filter, opacitet, färgning, storlek, placering och förvridning
+- Paintbrush
+- Chaos + glow, utan påverkan på bakgrund/textur
+- Rollbyte med gemensamt godkännande
+- Ingen chatt och inget arkiv
+
+Render: `npm start`
+WebSocket: `/ws`
