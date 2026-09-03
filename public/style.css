@@ -3,3 +3,31 @@
 .role-switch{display:flex;gap:6px;margin-top:10px}.role-switch select{flex:1}.role-switch button{white-space:nowrap}.person.you{font-weight:800}.proposal{margin-top:10px;padding:10px;border:1px solid currentColor}.proposal button{margin:8px 6px 0 0}.item{margin:8px 0;padding:8px;border:1px dashed currentColor}.item input[type=text],.item input:not([type]),.item>input{max-width:100%;box-sizing:border-box}.ctrl{display:flex;align-items:center;justify-content:space-between;gap:8px}.ctrl>span{min-width:90px}.hint{font-size:.8rem;opacity:.75;margin:8px 0}.camera-modal{position:fixed;inset:0;background:rgba(0,0,0,.82);display:grid;place-items:center;z-index:99}.camera-box{background:#111;border:2px solid #fff;padding:12px;max-width:92vw}.camera-box video{display:block;width:min(720px,86vw);max-height:75vh;object-fit:contain;background:#000}.camera-box div{display:flex;gap:8px;margin-top:10px}.camera-box button{flex:1}
 #poster{touch-action:none;cursor:crosshair}
 .role-switch{display:flex;gap:8px;align-items:stretch;margin-top:10px;flex-wrap:wrap}.role-switch select{flex:1;min-width:190px}.role-switch button{flex:0 0 auto}.person.you{font-weight:700}.proposal{line-height:1.4}.proposal button{margin:8px 6px 0 0}
+
+.role-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}.role-card{min-height:54px;text-align:left;padding:8px;border:1px solid #777;background:#111;color:#eee;cursor:pointer}.role-card small{display:block;margin-top:4px;opacity:.7}.role-card.free{border-style:dashed}.role-card.current{opacity:.45;cursor:default}.role-card:disabled{cursor:not-allowed}.camera-modal{position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;z-index:20}.camera-box{background:#111;border:2px solid #fff;padding:12px;max-width:92vw}.camera-box video{display:block;max-width:80vw;max-height:70vh;width:auto;height:auto;margin-bottom:10px}.camera-box button{margin-right:6px}
+
+/* v4.0 — desktop-first, no page scrolling */
+html,body{height:100%;overflow:hidden}
+body{padding:10px}
+header{height:38px;margin-bottom:8px;max-width:none}
+main{height:calc(100vh - 56px);max-width:none}
+.entry{height:42px;margin-bottom:8px;padding:7px 10px}
+.workspace{height:calc(100% - 50px);grid-template-columns:minmax(0,1fr) 300px;gap:10px;align-items:stretch}
+.poster-wrap{height:100%;min-height:0;padding:6px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.poster-wrap canvas{height:100%;width:auto;max-width:100%;object-fit:contain}
+.side{min-height:0;height:100%;overflow:auto;gap:8px;padding-right:2px}
+.side>.panel{padding:9px}
+.controls{max-height:none}
+.chat-panel{min-height:180px}
+.chat-panel #chat{height:105px}
+.role-grid{grid-template-columns:1fr 1fr;gap:5px}
+.role-card{min-height:48px;padding:7px;font-size:11px}
+.role-card small{font-size:9px}
+.proposal{margin-top:7px;padding:8px;font-size:11px}
+.proposal-title{font-weight:700;margin-bottom:7px}
+.votes{display:flex;flex-wrap:wrap;gap:4px;margin:5px 0}
+.vote{display:inline-block;padding:3px 6px;border:1px solid #555;font:10px monospace}
+.vote.ok{border-color:#aaa}
+.vote.wait{opacity:.55}
+.vote-count{font-size:10px;opacity:.65}
+@media(max-width:900px){html,body{overflow:auto;height:auto}.workspace{height:auto;grid-template-columns:1fr}.poster-wrap{height:auto}.poster-wrap canvas{height:auto;width:100%}.side{height:auto;overflow:visible}}

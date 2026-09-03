@@ -1,14 +1,8 @@
 {
-  "name": "kollektiv-poster-v3-6",
-  "version": "3.6.0",
+  "name": "kollektiv-poster-v4",
+  "version": "4.0.0",
   "private": true,
-  "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=18"
-  },
-  "dependencies": {
-    "ws": "^8.18.0"
-  }
+  "scripts": {"start": "node server.js"},
+  "dependencies": {"ws": "^8.18.0"},
+  "engines": {"node": ">=18"}
 }

@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KOLLEKTIV POSTER 3.6</title><link rel="stylesheet" href="/style.css"></head>
+<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KOLLEKTIV POSTER 3.9</title><link rel="stylesheet" href="/style.css"></head>
 <body>
-<header><div><div class="logo">KOLLEKTIV / POSTER_3.6</div><div class="tiny">NINE PEOPLE · ONE IMAGE · LIVE</div></div><div id="status" class="status">OFFLINE</div></header>
+<header><div><div class="logo">KOLLEKTIV / POSTER_3.9</div><div class="tiny">NINE PEOPLE · ONE IMAGE · LIVE</div></div><div id="status" class="status">OFFLINE</div></header>
 <main>
 <section class="entry panel"><label>ROOM</label><input id="room" value="MAIN"><button id="enter">ENTER ROOM</button><span id="role">ROLL: —</span></section>
 <section class="workspace">
@@ -42,7 +42,7 @@ function connect(){
 }
 $('enter').onclick=()=>{activeRoom=$('room').value.trim()||'MAIN';pendingRoom=activeRoom;connect();if(ws?.readyState===1){send({type:'join',room:activeRoom});pendingRoom=null}};
 function apply(){$('role').textContent='ROLL: '+(roles[myRole]||'SPEKTATOR');$('clear').classList.toggle('hidden',myRole!==6);build();render()}
-function set(k,v){S[k]=v;send({type:'set',key:k,value:v});build();render()}
+let buildQueued=false, renderQueued=false; function scheduleBuild(){if(buildQueued)return;buildQueued=true;requestAnimationFrame(()=>{buildQueued=false;build()})} function scheduleRender(){if(renderQueued)return;renderQueued=true;requestAnimationFrame(()=>{renderQueued=false;render()})} function set(k,v){S[k]=v;send({type:'set',key:k,value:v});scheduleRender()}
 function ctrl(l,n){let r=document.createElement('label');r.className='ctrl';let s=document.createElement('span');s.textContent=l;r.append(s,n);$('controls').append(r);return r}
 function rng(o,p,l,a,b,st,fn){let w=document.createElement('div'),i=document.createElement('input');w.className='slider';i.type='range';i.min=a;i.max=b;i.step=st;i.value=o[p]??a;let z=document.createElement('b');z.textContent=i.value;i.oninput=()=>{z.textContent=i.value;fn(+i.value)};w.append(i,z);ctrl(l,w)}
 function col(o,p,l,fn){let i=document.createElement('input');i.type='color';i.value=o[p]||'#ffffff';i.oninput=()=>fn(i.value);ctrl(l,i)}
@@ -63,12 +63,16 @@ function build(){
 function renderPeople(list){
  currentPeople=list||[];let e=$('people');e.innerHTML='';
  currentPeople.forEach(p=>{let d=document.createElement('div');d.className='person '+(p.id===myId?'you':'');d.textContent='P'+p.id+' · '+(roles[p.role]||'SPEKTATOR')+(p.id===myId?' · DU':'');e.append(d)});
- let wrap=document.createElement('div');wrap.className='role-switch';
- let s=document.createElement('select');
- Object.entries(roles).forEach(([id,n])=>{let holder=currentPeople.find(p=>p.role===+id);let o=document.createElement('option');o.value=id;o.textContent=holder?'↔ '+id+' · '+n+' (P'+holder.id+')':'○ '+id+' · '+n+' (LEDIG)';if(+id===myRole)o.selected=true;s.append(o)});
- let b=document.createElement('button');b.textContent=proposal?'ROLLBYTE PÅGÅR':'BEGÄR ROLLBYTE';b.disabled=!!proposal;
- b.onclick=()=>{let target=+s.value;if(target===myRole)return;let holder=currentPeople.find(p=>p.role===target);if(holder&&!myRole){addChat('SYSTEM: du måste ha en roll för att byta med någon.');return}send({type:'roleRequest',requestedRole:target})};
- wrap.append(s,b);e.append(wrap);
+ let title=document.createElement('div');title.className='hint';title.textContent=proposal?'ROLLBYTE ÄR ÖPPET':'Klicka på en annan roll för att föreslå byte.';e.append(title);
+ let grid=document.createElement('div');grid.className='role-grid';
+ Object.entries(roles).forEach(([id,n])=>{
+   let rid=+id,holder=currentPeople.find(p=>p.role===rid),card=document.createElement('button');card.type='button';card.className='role-card '+(rid===myRole?'current':'')+(holder?' occupied':' free');
+   card.innerHTML='<strong>'+n+'</strong><small>'+(rid===myRole?'DIN ROLL':holder?'P'+holder.id:'LEDIG')+'</small>';
+   card.disabled=!!proposal||rid===myRole;
+   card.onclick=()=>send({type:'roleRequest',requestedRole:rid});
+   grid.append(card);
+ });
+ e.append(grid);
 }
 function showProposal(p){
  proposal=p;
@@ -77,7 +81,11 @@ function showProposal(p){
  renderPeople(currentPeople);
  if(!p)return;
  let holder=currentPeople.find(x=>x.role===p.requestedRole);let target=roles[p.requestedRole]||'ROLL';let targetInfo=holder?'P'+holder.id+' har rollen':'rollen är LEDIG';let mine=p.requester===myId;
- e.append(document.createTextNode('ROLLBYTE: P'+p.requester+' vill ha '+target+' · '+targetInfo+' · '+p.approvals.length+'/'+p.total+' godkända'));
+ let h=document.createElement('div');h.className='proposal-title';h.textContent='P'+p.requester+' vill byta till '+target+' · '+targetInfo;e.append(h);
+ let votes=document.createElement('div');votes.className='votes';
+ (p.members||currentPeople).forEach(m=>{let v=document.createElement('span');v.className='vote '+(p.approvals.includes(m.id)?'ok':'wait');v.textContent='P'+m.id+' '+(p.approvals.includes(m.id)?'✓':'?');votes.append(v)});
+ e.append(votes);
+ let count=document.createElement('div');count.className='vote-count';count.textContent=p.approvals.length+'/'+p.total+' godkända';e.append(count);
  if(!p.approvals.includes(myId)){let b=document.createElement('button');b.textContent='✓ GODKÄNN';b.onclick=()=>send({type:'roleApprove',proposalId:p.id});e.append(b)}
  if(mine){let b=document.createElement('button');b.textContent='AVBRYT';b.onclick=()=>send({type:'roleCancel',proposalId:p.id});e.append(b)}
 }
@@ -86,8 +94,9 @@ $('chatSend').onclick=()=>{let i=$('chatInput'),t=i.value.trim();if(t){send({typ
 
 function sticker(s,chaos){let z=s.size*(1+(chaos.amount/100)*.15),x=C.width*s.x/100,y=C.height*s.y/100;Q.save();Q.translate(x,y);Q.fillStyle=s.color;Q.beginPath();if(s.shape==='circle')Q.arc(0,0,z/2,0,Math.PI*2);else if(s.shape==='square')Q.rect(-z/2,-z/2,z,z);else if(s.shape==='heart'){Q.moveTo(0,z*.4);Q.bezierCurveTo(-z*.65,-z*.05,-z*.45,-z*.55,0,-z*.25);Q.bezierCurveTo(z*.45,-z*.55,z*.65,-z*.05,0,z*.4)}else for(let i=0;i<10;i++){let r=i%2?z*.22:z*.5,a0=-Math.PI/2+i*Math.PI/5,xx=Math.cos(a0)*r,yy=Math.sin(a0)*r;i?Q.lineTo(xx,yy):Q.moveTo(xx,yy)}Q.fill();Q.restore()}
 function draw(st,preview=false){let p=st.points;if(p.length<2)return;let j=S.brush.jitter/100;Q.save();Q.globalAlpha=S.brush.opacity;Q.strokeStyle=S.draw.color;Q.lineWidth=S.brush.size;Q.lineCap='round';if(S.brush.type==='soft'){Q.shadowBlur=S.brush.size;Q.shadowColor=S.draw.color}if(S.brush.type==='dry')Q.globalAlpha*=.55;Q.beginPath();p.forEach((q,k)=>{let x=q.x*C.width,y=q.y*C.height;if(S.brush.type==='ink'){x+=Math.sin(k*.7)*j*4;y+=Math.cos(k*.5)*j*4}x+=Math.sin(k*S.brush.spacing)*j*18;y+=Math.cos(k*S.brush.spacing)*j*18;k?Q.lineTo(x,y):Q.moveTo(x,y)});Q.stroke();Q.restore()}
+const noiseCache=new Map();
 function texture(){let t=S.texture,s=Math.max(4,t.scale);Q.save();Q.globalAlpha=t.opacity;Q.fillStyle=t.color;Q.strokeStyle=t.color;Q.lineWidth=1;
- if(t.type==='noise'){let im=Q.createImageData(C.width,C.height),d=im.data;for(let i=0;i<d.length;i+=4){let v=90+Math.random()*165;d[i]=d[i+1]=d[i+2]=v;d[i+3]=255*t.opacity*.32}Q.putImageData(im,0,0)}
+ if(t.type==='noise'){let key='noise-'+C.width+'x'+C.height;let im=noiseCache.get(key);if(!im){im=Q.createImageData(C.width,C.height);let d=im.data;for(let i=0;i<d.length;i+=4){let v=110+Math.random()*145;d[i]=d[i+1]=d[i+2]=v;d[i+3]=255*.32}noiseCache.set(key,im)}Q.putImageData(im,0,0)}
  else if(t.type==='grain'){for(let i=0;i<9000;i++){let v=Math.random()*255;Q.globalAlpha=t.opacity*(.15+.7*Math.random());Q.fillStyle=`rgb(${v},${v},${v})`;Q.fillRect(Math.random()*C.width,Math.random()*C.height,1,1)}}
  else if(t.type==='dots')for(let y=0;y<C.height;y+=s)for(let x=0;x<C.width;x+=s){Q.beginPath();Q.arc(x,y,1.5,0,7);Q.fill()}
  else if(t.type==='lines'||t.type==='hatch')for(let x=-C.height;x<C.width;x+=s*2){Q.beginPath();Q.moveTo(x,0);Q.lineTo(x+C.height,C.height);Q.stroke()}
@@ -99,7 +108,25 @@ function texture(){let t=S.texture,s=Math.max(4,t.scale);Q.save();Q.globalAlpha=
  else if(t.type==='scribble')for(let y=0;y<C.height;y+=s*1.5){Q.beginPath();for(let x=0;x<C.width;x+=5)Q.lineTo(x,y+Math.sin(x*.04+y)*s*.5);Q.stroke()}
  else if(t.type==='bubbles')for(let i=0;i<300;i++){let x=Math.random()*C.width,y=Math.random()*C.height,r=2+Math.random()*s*.4;Q.beginPath();Q.arc(x,y,r,0,7);Q.stroke()}
  Q.restore()}
-function photo(p){let im=new Image();im.onload=()=>{let w=C.width*p.w/100,h=w*im.height/im.width,x=C.width*p.x/100-w/2,y=C.height*p.y/100-h/2;Q.drawImage(im,x,y,w,h)};im.src=p.src}
+const photoCache=new Map();
+function photo(p){
+  if(!p?.src)return;
+  let im=photoCache.get(p.src);
+  if(im?.complete&&im.naturalWidth){drawPhotoImage(p,im);return}
+  if(im)return;
+  im=new Image();
+  photoCache.set(p.src,im);
+  im.onload=()=>{scheduleRender()};
+  im.onerror=()=>{photoCache.delete(p.src);addChat('SYSTEM: kunde inte läsa fotot.')};
+  im.src=p.src;
+}
+function drawPhotoImage(p,im){
+  const maxW=C.width*p.w/100;
+  const h=maxW*im.naturalHeight/im.naturalWidth;
+  const x=C.width*p.x/100-maxW/2;
+  const y=C.height*p.y/100-h/2;
+  Q.drawImage(im,x,y,maxW,h);
+}
 function scene(){
  let w=C.width,h=C.height,b=S.bg,r=b.angle*Math.PI/180;Q.clearRect(0,0,w,h);
  if(b.mode==='solid')Q.fillStyle=b.colorA;else{let g=Q.createLinearGradient(w/2-Math.cos(r)*w,h/2-Math.sin(r)*h,w/2+Math.cos(r)*w,h/2+Math.sin(r)*h);g.addColorStop(0,b.colorA);g.addColorStop(1,b.colorB);Q.fillStyle=g}Q.fillRect(0,0,w,h);
@@ -126,7 +153,7 @@ function ampSafe(a,n){return a*n}
 function render(){scene();if(drawing&&pts.length>1)draw({points:pts},true);chaos()}
 function point(e){let r=C.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height}}
 C.onpointerdown=e=>{if(myRole!==6)return;drawing=true;pts=[point(e)];C.setPointerCapture(e.pointerId)};
-C.onpointermove=e=>{if(!drawing)return;pts.push(point(e));render()};
+C.onpointermove=e=>{if(!drawing)return;pts.push(point(e));scheduleRender()};
 C.onpointerup=()=>{if(drawing){drawing=false;if(pts.length>1)send({type:'stroke',points:pts});pts=[];render()}};
 $('clear').onclick=()=>send({type:'clear'});
 $('download').onclick=()=>{render();let a=document.createElement('a');a.download='kollektiv-poster.png';a.href=C.toDataURL('image/png');a.click()};
@@ -139,11 +166,12 @@ async function openCamera(){
  modal.innerHTML='<div class="camera-box"><video autoplay playsinline></video><div><button id="snap">TA BILD</button><button id="camClose">STÄNG</button></div></div>';
  document.body.append(modal);const v=modal.querySelector('video');
  try{camStream=await navigator.mediaDevices.getUserMedia({video:true});v.srcObject=camStream}catch(e){modal.remove();addChat('SYSTEM: kunde inte öppna kameran.');return}
- modal.querySelector('#snap').onclick=()=>{let c=document.createElement('canvas');c.width=v.videoWidth||900;c.height=v.videoHeight||1200;c.getContext('2d').drawImage(v,0,0,c.width,c.height);filePhotoData(c.toDataURL('image/jpeg',.85));closeCam(modal)};
+ modal.querySelector('#snap').onclick=()=>{let c=document.createElement('canvas');c.width=v.videoWidth||900;c.height=v.videoHeight||1200;c.getContext('2d').drawImage(v,0,0,c.width,c.height);compressPhoto(c.toDataURL('image/jpeg',.85));closeCam(modal)};
  modal.querySelector('#camClose').onclick=()=>closeCam(modal);
 }
 function closeCam(m){camStream?.getTracks().forEach(t=>t.stop());camStream=null;m.remove()}
-function filePhoto(f){if(!f)return;let r=new FileReader();r.onload=()=>filePhotoData(r.result);r.readAsDataURL(f)}
-function filePhotoData(src){S.photos.push({id:Date.now(),src,x:50,y:50,w:45});set('photos',S.photos)}
+function filePhoto(f){if(!f)return;let r=new FileReader();r.onload=()=>compressPhoto(r.result);r.readAsDataURL(f)}
+function compressPhoto(src){let im=new Image();im.onload=()=>{let max=1100,scale=Math.min(1,max/Math.max(im.naturalWidth,im.naturalHeight));let c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.naturalWidth*scale));c.height=Math.max(1,Math.round(im.naturalHeight*scale));c.getContext('2d').drawImage(im,0,0,c.width,c.height);filePhotoData(c.toDataURL('image/jpeg',.82))};im.src=src}
+function filePhotoData(src){const id=Date.now()+Math.floor(Math.random()*1000);S.photos.push({id,src,x:50,y:50,w:45});set('photos',S.photos)}
 stat('OFFLINE');render();
 </script></body></html>
