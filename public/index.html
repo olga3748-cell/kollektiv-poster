@@ -14,7 +14,7 @@
 </aside></section></main>
 <script>
 const C=document.getElementById('poster'),X=C.getContext('2d'),SC=document.createElement('canvas');SC.width=C.width;SC.height=C.height;const Q=SC.getContext('2d'),$=id=>document.getElementById(id);
-let ws=null,myId=null,myRole=null,pendingRoom=null,currentPeople=[],proposal=null,drawing=false,pts=[];
+let ws=null,myId=null,myRole=null,pendingRoom=null,activeRoom=null,currentPeople=[],proposal=null,drawing=false,pts=[],reconnectTimer=null,heartbeatTimer=null;
 const roles={1:'BAKGRUND',2:'TEXTUR',3:'STICKERS',4:'COPYWRITER',5:'TYPSNITT',6:'TECKNA',7:'PAINTBRUSH',8:'CHAOS',9:'FOTOGRAF'};
 let S={bg:{mode:'gradient',colorA:'#101010',colorB:'#5a416f',angle:135},texture:{type:'noise',opacity:.1,color:'#fff',scale:18},stickers:[],textLayers:[{id:1,value:'COLLECTIVE SIGNAL',x:50,y:15,color:'#fff',size:42,shadow:true,font:'Arial',weight:'700',height:100,width:100,skew:0}],type:{font:'Arial',weight:'700',height:100,width:100,skew:0},draw:{color:'#fff',strokes:[]},brush:{size:8,opacity:.8,type:'soft',jitter:0,spacing:1},chaos:{amount:0,mode:'glitch',frequency:5},photos:[]};
 function send(m){if(ws?.readyState===1)ws.send(JSON.stringify(m))}
@@ -23,23 +23,24 @@ function connect(){
  if(ws&&(ws.readyState===0||ws.readyState===1))return;
  const proto=location.protocol==='https:'?'wss:':'ws:';stat('CONNECTING');
  ws=new WebSocket(proto+'//'+location.host+'/ws');
- ws.onopen=()=>{stat('ONLINE');if(pendingRoom){send({type:'join',room:pendingRoom});pendingRoom=null}};
- ws.onclose=()=>{stat('OFFLINE');myRole=null;$('role').textContent='ROLL: —';renderPeople([])};
+ ws.onopen=()=>{stat('ONLINE');clearTimeout(reconnectTimer);if(heartbeatTimer)clearInterval(heartbeatTimer);heartbeatTimer=setInterval(()=>send({type:'ping'}),15000);if(pendingRoom){send({type:'join',room:pendingRoom});pendingRoom=null}};
+ ws.onclose=()=>{if(heartbeatTimer){clearInterval(heartbeatTimer);heartbeatTimer=null}stat('OFFLINE');myRole=null;$('role').textContent='ROLL: —';renderPeople([]);if(activeRoom){pendingRoom=activeRoom;clearTimeout(reconnectTimer);reconnectTimer=setTimeout(connect,2500)}};
  ws.onerror=()=>stat('ERROR');
  ws.onmessage=e=>{
   const m=JSON.parse(e.data);
   if(m.type==='hello'){myId=m.clientId;m.roles?.forEach(r=>roles[r.id]=r.name)}
   if(m.type==='joined'){myRole=m.role;S=m.state;currentPeople=m.clients||[];proposal=m.proposal;apply();renderPeople(currentPeople);showProposal(proposal)}
-  if(m.type==='presence'){currentPeople=m.clients||[];renderPeople(currentPeople)}
+  if(m.type==='presence'){currentPeople=m.clients||[];renderPeople(currentPeople);if(proposal)showProposal(proposal)}
   if(m.type==='roleChanged'){myRole=m.role;currentPeople=m.clients||currentPeople;apply();renderPeople(currentPeople);addChat('SYSTEM: rollerna har bytts.')}
   if(m.type==='roleProposal'){proposal=m.proposal;showProposal(proposal)}
+  if(m.type==='pong'){stat('ONLINE')}
   if(m.type==='state'){S[m.key]=m.value;build();render()}
   if(m.type==='stroke'){S.draw.strokes.push(m.stroke);render()}
   if(m.type==='clear'){S.draw.strokes=[];render()}
   if(m.type==='chat')addChat('P'+m.from+' · '+(roles[m.role]||'—')+': '+m.text)
  };
 }
-$('enter').onclick=()=>{pendingRoom=$('room').value.trim()||'MAIN';connect();if(ws?.readyState===1){send({type:'join',room:pendingRoom});pendingRoom=null}};
+$('enter').onclick=()=>{activeRoom=$('room').value.trim()||'MAIN';pendingRoom=activeRoom;connect();if(ws?.readyState===1){send({type:'join',room:activeRoom});pendingRoom=null}};
 function apply(){$('role').textContent='ROLL: '+(roles[myRole]||'SPEKTATOR');$('clear').classList.toggle('hidden',myRole!==6);build();render()}
 function set(k,v){S[k]=v;send({type:'set',key:k,value:v});build();render()}
 function ctrl(l,n){let r=document.createElement('label');r.className='ctrl';let s=document.createElement('span');s.textContent=l;r.append(s,n);$('controls').append(r);return r}
@@ -59,8 +60,23 @@ function build(){
  if(myRole===8){sel(S.chaos,'mode','FILTER',['glitch','ripple','warp','jitter','rotation','scatter','solarize','echo'],v=>set('chaos',{...S.chaos,mode:v}));rng(S.chaos,'amount','AMOUNT',0,100,1,v=>set('chaos',{...S.chaos,amount:v}));rng(S.chaos,'frequency','FREQUENCY',1,30,1,v=>set('chaos',{...S.chaos,frequency:v}));let h=document.createElement('div');h.className='hint';h.textContent='CHAOS påverkar hela bilden.';q.append(h)}
  if(myRole===9){let b=document.createElement('button');b.textContent='📷 ÖPPNA KAMERA';b.onclick=openCamera;q.append(b);let i=document.createElement('input');i.type='file';i.accept='image/*';i.onchange=()=>filePhoto(i.files[0]);ctrl('BILDFIL',i);S.photos.forEach(p=>{rng(p,'w','STORLEK',10,100,1,v=>{p.w=v;set('photos',S.photos)});rng(p,'x','X',0,100,1,v=>{p.x=v;set('photos',S.photos)});rng(p,'y','Y',0,100,1,v=>{p.y=v;set('photos',S.photos)})})}
 }
-function renderPeople(list){currentPeople=list||[];let e=$('people');e.innerHTML='';currentPeople.forEach(p=>{let d=document.createElement('div');d.className='person '+(p.id===myId?'you':'');d.textContent='P'+p.id+' · '+(roles[p.role]||'SPEKTATOR')+(p.id===myId?' · DU':'');e.append(d)});if(myRole){let wrap=document.createElement('div');wrap.className='role-switch';let s=document.createElement('select');Object.entries(roles).forEach(([id,n])=>{let o=document.createElement('option');o.value=id;o.textContent=id+' · '+n;if(+id===myRole)o.selected=true;s.append(o)});let b=document.createElement('button');b.textContent='BEGÄR ROLLBYTE';b.disabled=!!proposal;b.onclick=()=>send({type:'roleRequest',requestedRole:+s.value});wrap.append(s,b);e.append(wrap)}}
-function showProposal(p){proposal=p;let e=$('proposal');e.innerHTML='';e.classList.toggle('hidden',!p);if(!p)return;let mine=p.requester===myId;e.append(document.createTextNode('ROLLBYTE: P'+p.requester+' vill ha '+roles[p.requestedRole]+' · '+p.approvals.length+'/'+p.total+' godkända'));if(!p.approvals.includes(myId)){let b=document.createElement('button');b.textContent='✓ GODKÄNN';b.onclick=()=>send({type:'roleApprove'});e.append(b)}if(mine){let b=document.createElement('button');b.textContent='AVBRYT';b.onclick=()=>send({type:'roleCancel'});e.append(b)}}
+function renderPeople(list){
+ currentPeople=list||[];let e=$('people');e.innerHTML='';
+ currentPeople.forEach(p=>{let d=document.createElement('div');d.className='person '+(p.id===myId?'you':'');d.textContent='P'+p.id+' · '+(roles[p.role]||'SPEKTATOR')+(p.id===myId?' · DU':'');e.append(d)});
+ let wrap=document.createElement('div');wrap.className='role-switch';
+ let s=document.createElement('select');
+ Object.entries(roles).forEach(([id,n])=>{let holder=currentPeople.find(p=>p.role===+id);let o=document.createElement('option');o.value=id;o.textContent=holder?'↔ '+id+' · '+n+' (P'+holder.id+')':'○ '+id+' · '+n+' (LEDIG)';if(+id===myRole)o.selected=true;s.append(o)});
+ let b=document.createElement('button');b.textContent=proposal?'ROLLBYTE PÅGÅR':'BEGÄR ROLLBYTE';b.disabled=!!proposal;
+ b.onclick=()=>{let target=+s.value;if(target===myRole)return;let holder=currentPeople.find(p=>p.role===target);if(holder&&!myRole){addChat('SYSTEM: du måste ha en roll för att byta med någon.');return}send({type:'roleRequest',requestedRole:target})};
+ wrap.append(s,b);e.append(wrap);
+}
+function showProposal(p){
+ proposal=p;let e=$('proposal');e.innerHTML='';e.classList.toggle('hidden',!p);if(!p)return;
+ let holder=currentPeople.find(x=>x.role===p.requestedRole);let target=roles[p.requestedRole]||'ROLL';let targetInfo=holder?'P'+holder.id+' har rollen':'rollen är LEDIG';let mine=p.requester===myId;
+ e.append(document.createTextNode('ROLLBYTE: P'+p.requester+' vill ha '+target+' · '+targetInfo+' · '+p.approvals.length+'/'+p.total+' godkända'));
+ if(!p.approvals.includes(myId)){let b=document.createElement('button');b.textContent='✓ GODKÄNN';b.onclick=()=>send({type:'roleApprove',proposalId:p.id});e.append(b)}
+ if(mine){let b=document.createElement('button');b.textContent='AVBRYT';b.onclick=()=>send({type:'roleCancel',proposalId:p.id});e.append(b)}
+}
 function addChat(t){let d=document.createElement('div');d.textContent=t;$('chat').append(d);$('chat').scrollTop=$('chat').scrollHeight}
 $('chatSend').onclick=()=>{let i=$('chatInput'),t=i.value.trim();if(t){send({type:'chat',text:t});i.value=''}};$('chatInput').onkeydown=e=>{if(e.key==='Enter')$('chatSend').click()};
 

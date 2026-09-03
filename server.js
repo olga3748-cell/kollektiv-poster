@@ -6,6 +6,7 @@ let nextClient=1,nextSticker=1,nextText=2;
 const clients=new Map(); // ws -> client
 const roomState=new Map(); // room -> shared poster state
 const proposals=new Map(); // room -> proposal
+let nextProposal=1;
 
 function clone(o){return JSON.parse(JSON.stringify(o))}
 function initialState(){return {bg:{mode:'gradient',colorA:'#101010',colorB:'#5a416f',angle:135},texture:{type:'noise',opacity:.1,color:'#fff',scale:18},stickers:[],textLayers:[{id:1,value:'COLLECTIVE SIGNAL',x:50,y:15,color:'#fff',size:42,shadow:true,font:'Arial',weight:'700',height:100,width:100,skew:0}],type:{font:'Arial',weight:'700',height:100,width:100,skew:0},draw:{color:'#fff',strokes:[]},brush:{size:8,opacity:.8,type:'soft',jitter:0,spacing:1},chaos:{amount:0,mode:'glitch',frequency:5},photos:[]}}
@@ -16,7 +17,8 @@ const broadcast=(room,x)=>roomClients(room).forEach(([w])=>send(w,x));
 const presence=room=>roomClients(room).map(([,c])=>({id:c.id,role:c.role,room:c.room}));
 const taken=(r,e,room)=>roomClients(room).some(([w,c])=>w!==e&&c.role===r);
 function assign(w,r,room){if(r&&ROLES.some(x=>x.id===r)&&!taken(r,w,room))return r;return ROLES.find(x=>!taken(x.id,w,room))?.id||null}
-function prop(room){let p=proposals.get(room);return p?{requester:p.requester,requestedRole:p.requestedRole,approvals:[...p.approvals],total:roomClients(room).length}:null}
+function prop(room){let p=proposals.get(room);return p?{id:p.id,requester:p.requester,requestedRole:p.requestedRole,approvals:[...p.approvals],total:roomClients(room).length}:null}
+function finishProposal(room){const p=proposals.get(room);if(!p)return false;const members=roomClients(room).map(([,x])=>x);if(!members.length || !members.every(x=>p.approvals.has(x.id)))return false;const a=members.find(x=>x.id===p.requester);if(!a){resetProposal(room);return false}const b=members.find(x=>x.role===p.requestedRole);if(b){const old=a.role;a.role=b.role;b.role=old}else a.role=p.requestedRole;proposals.delete(room);roomClients(room).forEach(([w,x])=>send(w,{type:'roleChanged',role:x.role,clients:presence(room)}));broadcast(room,{type:'roleProposal',proposal:null});return true}
 function resetProposal(room){if(proposals.has(room)){proposals.delete(room);broadcast(room,{type:'roleProposal',proposal:null})}}
 const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://'+req.headers.host);if(u.pathname==='/health'){res.writeHead(200,{'Content-Type':'application/json'});return res.end(JSON.stringify({ok:true,clients:clients.size}))}let f=u.pathname==='/'?'/index.html':u.pathname,p=path.normalize(path.join(PUBLIC,f));if(!p.startsWith(PUBLIC))return res.end('Forbidden');fs.readFile(p,(e,d)=>{if(e){res.writeHead(404);return res.end('Not found')}res.writeHead(200,{'Content-Type':p.endsWith('.html')?'text/html; charset=utf-8':p.endsWith('.css')?'text/css; charset=utf-8':'application/octet-stream'});res.end(d)})});
 const wss=new WebSocket.Server({server,path:'/ws'});
@@ -39,28 +41,23 @@ wss.on('connection',ws=>{
     if(m.type==='chat'){let text=String(m.text||'').trim().slice(0,500);if(text)broadcast(room,{type:'chat',from:c.id,role:c.role,text});return}
     if(m.type==='roleRequest'){
       const r=Number(m.requestedRole);
-      if(!c.role||!ROLES.some(x=>x.id===r)||r===c.role)return;
+      if(!ROLES.some(x=>x.id===r)||r===c.role)return;
+      if(!c.role && taken(r,null,room))return;
       if(proposals.has(room))return;
-      proposals.set(room,{requester:c.id,requestedRole:r,approvals:new Set([c.id])});
-      broadcast(room,{type:'roleProposal',proposal:prop(room)});return;
+      proposals.set(room,{id:nextProposal++,requester:c.id,requestedRole:r,approvals:new Set([c.id])});
+      broadcast(room,{type:'roleProposal',proposal:prop(room)});
+      finishProposal(room);
+      return;
     }
     if(m.type==='roleApprove'){
-      const p=proposals.get(room);if(!p)return;
+      const p=proposals.get(room);if(!p || Number(m.proposalId)!==p.id)return;
       if(!roomClients(room).some(([,x])=>x.id===c.id))return;
       p.approvals.add(c.id);
-      const members=roomClients(room).map(([,x])=>x);
-      if(members.length && members.every(x=>p.approvals.has(x.id))){
-        const a=members.find(x=>x.id===p.requester),b=members.find(x=>x.role===p.requestedRole);
-        if(a){
-          if(b){const old=a.role;a.role=b.role;b.role=old}
-          else a.role=p.requestedRole;
-          roomClients(room).forEach(([w,x])=>send(w,{type:'roleChanged',role:x.role,clients:presence(room)}));
-        }
-        resetProposal(room);
-      }else broadcast(room,{type:'roleProposal',proposal:prop(room)});
+      if(!finishProposal(room))broadcast(room,{type:'roleProposal',proposal:prop(room)});
       return;
     }
     if(m.type==='roleCancel'&&proposals.get(room)?.requester===c.id){resetProposal(room);return}
+    if(m.type==='ping'){send(ws,{type:'pong',t:Date.now()});return}
     const allowed={1:['bg'],2:['texture'],3:['stickers'],4:['textLayers'],5:['type'],6:['draw'],7:['brush'],8:['chaos'],9:['photos']};
     if(m.type==='set'){
       let k=String(m.key||'');if(!(allowed[c.role]||[]).includes(k))return;
