@@ -1,40 +1,28 @@
-# KOLLEKTIV / POSTER — Multiplayer V2
+# KOLLEKTIV / POSTER — Multiplayer V3
 
-Det här är en serverbaserad multiplayer-version. Öppna INTE `public/index.html`
-direkt som en lokal fil; då finns ingen Socket.IO-server och rum kan inte fungera.
+## Nya funktioner
+- Varje deltagare får en egen låst roll i multiplayer.
+- FÖRESLÅ ROLLBYTE startar en omröstning.
+- ALLA aktiva deltagare måste rösta JA.
+- Ett enda NEJ avbryter bytet.
+- När alla säger JA slumpas samtliga till nya roller.
+- Ett kort ljud spelas hos de andra när någon föreslår rollbyte.
+- Förinställd snabbchatt.
+- Diskret aktivitetsstatus.
+- SPARA PNG och SPARA PDF.
+- Fler grafiska texturer: prickar, linjer, rutnät, diagonal, korsraster,
+  halftone, schack, vågor och ränder.
+- Fler systemtypsnitt. Inga Sixtyfour/UnifrakturMaguntia-webbfonter.
 
 ## Lokalt
-1. Installera Node.js 20+
-2. I projektmappen:
-   npm install
-   npm start
-3. Öppna:
-   http://localhost:3000
-
-Testa multiplayer genom att öppna samma adress i två olika webbläsarfönster.
-Skapa rum i det ena, kopiera rumslänken och öppna länken i det andra.
-
-## Render
-Ladda upp hela projektmappen till ett Git-repo och skapa en Render Web Service,
-eller använd `render.yaml`.
-
-Build command:
 npm install
-
-Start command:
 npm start
 
-När appen är deployad ska alla deltagare använda SAMMA deployade URL.
-En rumslänk ser ut ungefär så här:
-https://din-app.onrender.com/?room=ABCDE
+Öppna http://localhost:3000
 
-## V2-fixar
-- Rumslänk använder `?room=ABCDE` i stället för hash.
-- Tydligare startskärm: SKAPA RUM / GÅ MED.
-- Knappar aktiveras först när servern verkligen är ansluten.
-- Tydliga serverfel i UI.
-- Socket.IO använder polling + websocket och återansluter automatiskt.
-- Återanslutning försöker gå tillbaka till samma rum.
-- Delad länk förifyller rumskoden.
-- Sixtyfour och UnifrakturMaguntia är borttagna.
-- V6.3-funktionerna behålls.
+## Render
+Build command: npm install
+Start command: npm start
+
+OBS: PDF-export använder jsPDF från CDN, så internet behövs för PDF.
+PNG fungerar utan den externa PDF-biblioteket.
