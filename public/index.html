@@ -2026,7 +2026,8 @@ document.getElementById('save').onclick=()=>{
  let versions=JSON.parse(localStorage.getItem('kollektiv-versions-v2')||'[]');versions.unshift({time:new Date().toLocaleString('sv-SE'),state:serializableState()});versions=versions.slice(0,9);localStorage.setItem('kollektiv-versions-v2',JSON.stringify(versions));showVersions();
 };
 document.getElementById('reset').onclick=()=>{
- // TOTAL RESET: clear current poster, saved versions and persisted state.
+ if(!confirm('Rensa hela postern för alla i rummet?'))return;
+
  localStorage.removeItem('kollektiv-poster-v2');
  localStorage.removeItem('kollektiv-versions-v2');
 
@@ -2043,11 +2044,14 @@ document.getElementById('reset').onclick=()=>{
  selectedSticker=-1;selectedText=-1;selectedPhoto=-1;
  drawing=false;activeStroke=null;
 
- // Keep the reset blank state as the new local state.
- saveLocal();
+ // Save locally WITHOUT triggering the normal role-scoped sync.
+ try{localStorage.setItem('kollektiv-poster-v2',JSON.stringify(serializableState()))}catch(e){}
  buildControls();
  showVersions();
  render();
+
+ // RESET is intentionally room-wide, unlike ordinary role edits.
+ if(multiplayerActive())socket.emit('reset-room',{room:roomCode});
 };
 
 function offerPngDownload(dataUrl){

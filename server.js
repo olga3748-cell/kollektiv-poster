@@ -7,6 +7,20 @@ const io=new Server(server,{maxHttpBufferSize:12e6,pingTimeout:20000,pingInterva
 app.use(express.static(path.join(__dirname,'public'),{extensions:['html']}));
 const rooms=new Map(),CHARS='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ROLES=['background','texture','stickers','copy','font','draw','paint','chaos','photo'];
+function blankRoomState(){
+ return {
+  bg:{type:'solid',c1:'#ffffff',c2:'#ffffff',c3:'#ffffff',colors:1,angle:0},
+  texture:{type:'none',opacity:0,scale:18,color:'#111111'},
+  stickers:[],
+  texts:[],
+  strokes:[],
+  photos:[],
+  chaos:{glitch:0,warp:0,rgb:0,melt:0,echo:0,pixel:0,ripple:0,twist:0},
+  draw:{size:22,opacity:100,color:'#101010'},
+  paint:{material:'RUNDA',size:24,opacity:100,organic:0,swell:0,twist:0,sticky:0,jagged:0,color:'#101010'}
+ };
+}
+
 const PHRASES=new Set(['JAG ÄR NÖJD','JAG ÄR INTE NÖJD','MER!','MINDRE!','SPARA DEN HÄR','VÄNTA']);
 const cleanRoom=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8);
 const cleanName=v=>String(v||'ANONYM').replace(/[<>]/g,'').trim().slice(0,24)||'ANONYM';
@@ -44,9 +58,10 @@ app.get('/health',(_q,res)=>res.json({ok:true,rooms:rooms.size}));
 app.get('/r/:code',(q,res)=>res.redirect('/?room='+encodeURIComponent(cleanRoom(q.params.code))));
 app.get('*',(_q,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 io.on('connection',socket=>{
- socket.on('create-room',({name,state}={},ack=()=>{})=>{leave(socket);let c=code(),r={state:safe(state),people:new Map(),vote:null,updated:Date.now()};rooms.set(c,r);let role=availableRole(r);r.people.set(socket.id,{name:cleanName(name),role});socket.join(c);socket.data.room=c;ack({ok:true,room:c,state:r.state,role,participants:list(c)});presence(c)});
+ socket.on('create-room',({name}={},ack=()=>{})=>{leave(socket);let c=code(),r={state:blankRoomState(),people:new Map(),vote:null,updated:Date.now()};rooms.set(c,r);let role=availableRole(r);r.people.set(socket.id,{name:cleanName(name),role});socket.join(c);socket.data.room=c;ack({ok:true,room:c,state:r.state,role,participants:list(c)});presence(c)});
  socket.on('join-room',({room,name}={},ack=()=>{})=>{let c=cleanRoom(room),r=rooms.get(c);if(!r)return ack({ok:false,error:'Rummet finns inte längre.'});if(r.people.size>=ROLES.length)return ack({ok:false,error:'Rummet är fullt (max 9 personer).'});leave(socket);let role=availableRole(r);r.people.set(socket.id,{name:cleanName(name),role});socket.join(c);socket.data.room=c;r.updated=Date.now();ack({ok:true,room:c,state:r.state,role,participants:list(c)});presence(c)});
  socket.on('state-update',({room,state}={})=>{let c=cleanRoom(room),r=rooms.get(c);if(socket.data.room!==c||!r)return;let p=r.people.get(socket.id),n=safe(state);if(!p||!n)return;r.state=mergeByRole(r.state,n,p.role);r.updated=Date.now();io.to(c).emit('room-state',{room:c,state:r.state,by:socket.id})});
+ socket.on('reset-room',({room}={})=>{let c=cleanRoom(room),r=rooms.get(c);if(socket.data.room!==c||!r)return;r.state=blankRoomState();r.updated=Date.now();io.to(c).emit('room-state',{room:c,state:r.state,by:socket.id,reset:true})});
  socket.on('propose-role-shuffle',({room}={})=>{let c=cleanRoom(room),r=rooms.get(c);if(socket.data.room!==c||!r||r.vote)return;let p=r.people.get(socket.id);r.vote={by:socket.id,byName:p.name,yes:new Set([socket.id]),voters:new Set([socket.id])};io.to(c).emit('role-vote-request',votePayload(r));if(r.people.size===1)shuffle(c,r)});
  socket.on('role-vote',({room,yes}={})=>{let c=cleanRoom(room),r=rooms.get(c);if(socket.data.room!==c||!r?.vote||r.vote.voters.has(socket.id))return;r.vote.voters.add(socket.id);if(!yes){let p=r.people.get(socket.id);r.vote=null;io.to(c).emit('role-vote-cancelled',{byName:p?.name||'NÅGON'});return}r.vote.yes.add(socket.id);if(r.vote.yes.size===r.people.size)shuffle(c,r);else io.to(c).emit('role-vote-state',votePayload(r))});
  socket.on('quick-chat',({room,phrase}={})=>{let c=cleanRoom(room),r=rooms.get(c);phrase=String(phrase||'').toUpperCase();if(socket.data.room!==c||!r||!PHRASES.has(phrase))return;let p=r.people.get(socket.id);io.to(c).emit('quick-chat',{name:p.name,phrase})});

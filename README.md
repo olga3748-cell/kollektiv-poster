@@ -1,19 +1,12 @@
-# KOLLEKTIV / POSTER — SIMPLE V1.1
+# KOLLEKTIV / POSTER — SIMPLE V1.3
 
-Detta är en reparerad enkel testversion byggd direkt ovanpå fungerande Multiplayer V4.
+Två konkreta fixar:
 
-Viktigt: V1.1 förenklar främst gränssnittet och ändrar inte multiplayer-arkitekturen.
-Det minskar risken att lobby/rum går sönder.
+- RESET rensar nu hela rummets poster för alla deltagare.
+- Varje NYTT rum startar alltid med en helt blank vit poster, oberoende av vad skaparen hade sparat lokalt.
 
-- Rollmenyn är gömd.
-- Bara din aktuella roll visas stort.
-- Chatten är mindre.
-- Färre visuella kontroller.
-- 6 mer tydligt olika typsnitt.
-- V4:s unika roller, enhälliga rollbyte, ljud, kamera och suddgummi är kvar.
+Vanliga redigeringar är fortfarande rollbaserade; endast RESET är global.
 
 Kör:
 npm install
 npm start
-
-Deploya hela mappen på Render.
