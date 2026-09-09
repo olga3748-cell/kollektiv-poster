@@ -21,7 +21,6 @@ input[type=range]{width:100%}input[type=color]{width:42px;height:26px;padding:1p
 .small{font-size:10px;color:#777}.grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}.grid button{width:100%}
 .value{width:34px;text-align:right;color:#aaa}.swatches{display:flex;gap:4px;flex-wrap:wrap}.swatches button{width:24px;height:24px;padding:0}
 .library{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}.library button{height:52px;font-size:22px}
-#versions{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.version{border:1px solid #444;padding:3px;cursor:pointer}.version canvas{width:100%;display:block}.version div{font-size:9px;color:#999}
 .hidden{display:none!important}.danger{border-color:#744;color:#ff9b9b}.hint{color:#777;margin:5px 0}
 
 /* V6 UI */
@@ -84,7 +83,6 @@ body.poster-only #posterView{position:fixed;right:14px;top:14px}
 #chatFeed{height:104px;overflow:auto;border:1px solid #292929;background:#080808;padding:5px;margin-bottom:6px}
 .chat-line{font-size:9px;line-height:1.35;margin-bottom:4px;color:#aaa}.chat-line b{color:#eee}
 .chat-buttons{display:grid;grid-template-columns:1fr 1fr;gap:3px}.chat-buttons button{font-size:8px;padding:5px 2px}
-#activity{font-size:9px;color:#aaa;min-height:13px;margin-top:5px}
 #roleTools{border-top:1px solid #333;margin-top:7px;padding-top:7px}
 #roleVoteStatus{font-size:9px;color:#bbb;margin-top:4px;min-height:13px}
 #modes button.locked{opacity:.18;cursor:not-allowed}
@@ -104,11 +102,8 @@ aside{width:270px}
 #controls .hint{line-height:1.45}
 #controls .reset-slider{display:none}
 #controls .row{margin:10px 0}
-#versions{display:none!important}
 #leftChat{width:145px}
 #chatFeed{height:68px}
-.chat-buttons button:nth-child(3),
-.chat-buttons button:nth-child(4){display:none}
 #collectiveBox{padding:8px}
 #simpleRoleHeader{font-size:9px;letter-spacing:.14em;color:#777;margin:5px 0 2px}
 #simpleRoleName{font-size:18px;font-weight:900;color:var(--role);margin-bottom:10px}
@@ -122,12 +117,9 @@ aside{width:270px}
   <div class="chat-buttons">
     <button data-chat="JAG ÄR NÖJD">NÖJD</button>
     <button data-chat="JAG ÄR INTE NÖJD">INTE NÖJD</button>
-    <button data-chat="MER!">MER!</button>
-    <button data-chat="MINDRE!">MINDRE!</button>
     <button data-chat="SPARA DEN HÄR">SPARA</button>
     <button data-chat="VÄNTA">VÄNTA</button>
   </div>
-  <div id="activity"></div>
   <div id="roleTools">
     <button id="proposeRoles" style="width:100%">FÖRESLÅ ROLLBYTE</button>
     <div id="roleVoteStatus"></div>
@@ -137,7 +129,7 @@ aside{width:270px}
 <div class="app">
   <main class="stage"><button id="posterView">VISA POSTER</button><canvas id="canvas" width="600" height="900"></canvas></main>
   <aside class="panel">
-    <h1>KOLLEKTIV / POSTER</h1><div class="small">KOLLEKTIV VERSION · SIMPLE V1.2</div>
+    <h1>KOLLEKTIV / POSTER</h1><div class="small">KOLLEKTIV VERSION · SIMPLE V1.4 · CLEAN</div>
     <hr>
     <div class="modebar" id="modes">
       <button data-mode="background">BAKGRUND</button><button data-mode="texture">TEXTUR</button><button data-mode="stickers">STICKERS</button>
@@ -151,12 +143,10 @@ aside{width:270px}
     </div>
     <div id="simpleRoleHeader">DIN ROLL</div><div id="simpleRoleName">—</div><div id="controls"></div>
     <hr>
-    <div class="grid"><button id="random">SLUMPA</button><button id="save">SPARA VERSION</button><button id="export">EXPORTERA PNG</button><button id="reset" class="danger">RESET</button></div>
-    <h2>SPARADE VERSIONER</h2><div id="versions"></div>
+    <div class="grid"><button id="export">EXPORTERA PNG</button><button id="reset" class="danger">RENSA</button></div>
   </aside>
 </div>
 <input id="photoInput" type="file" accept="image/*" multiple class="hidden">
-<input id="cameraInput" type="file" accept="image/*" capture="environment" class="hidden">
 
 
 <div id="voteOverlay"><div class="modal-card">
@@ -355,31 +345,23 @@ const drawingAssets=[
   {name:'öga',svg:`<svg xmlns="http://www.w3.org/2000/svg" width="240" height="130"><path d="M12 65 Q120 0 228 65 Q120 130 12 65Z" fill="none" stroke="#111" stroke-width="8"/><circle cx="120" cy="65" r="27" fill="#111"/></svg>`},
   {name:'blixt',svg:`<svg xmlns="http://www.w3.org/2000/svg" width="170" height="230"><path d="M110 8 L25 122 H78 L58 222 L145 92 H94Z" fill="#111"/></svg>`}
 ];
-const state={
- bg:{type:'gradient',c1:'#f4f0df',c2:'#ff3355',c3:'#2f6bff',colors:3,angle:25},
- texture:{type:'dots',opacity:14,scale:18,color:'#111'},
- stickers:[], texts:[{text:'KOLLEKTIV',x:300,y:100,size:58,color:'#101010',font:'Arial',w:1,h:1,skew:0,rot:0,shadow:false,shadowColor:'#000',blur:8,sx:6,sy:6}],
- strokes:[], photos:[], chaos:{glitch:0,warp:0,rgb:0,melt:0,echo:0,pixel:0,ripple:0,twist:0},
- draw:{size:22,opacity:100,color:'#101010'},
- paint:{material:'RUNDA',size:24,opacity:100,organic:0,swell:0,twist:0,sticky:0,jagged:0,color:'#101010'}
-};
-function clone(x){return JSON.parse(JSON.stringify(x))}
+function blankState(){
+ return {
+  bg:{type:'solid',c1:'#ffffff',c2:'#ffffff',c3:'#ffffff',colors:1,angle:0},
+  texture:{type:'none',opacity:0,scale:18,color:'#111111'},
+  stickers:[],texts:[],strokes:[],photos:[],
+  chaos:{glitch:0,warp:0,rgb:0,melt:0,echo:0,pixel:0,ripple:0,twist:0},
+  draw:{size:22,opacity:100,color:'#101010'},
+  paint:{material:'RUNDA',size:24,opacity:100,organic:0,swell:0,twist:0,sticky:0,jagged:0,color:'#101010'}
+ };
+}
+const state=blankState();
 function serializableState(){
  return JSON.parse(JSON.stringify(state,(k,v)=>k==='img'?undefined:v));
 }
 function saveLocal(){
- try{
-  localStorage.setItem('kollektiv-poster-v2',JSON.stringify(serializableState()));
- }catch(e){
-  console.warn('Kunde inte autospara allt lokalt:',e);
- }
+ // Multiplayer-rummet är sanningskällan; klienten sparar ingen gammal poster lokalt.
  scheduleRoomSync();
-}
-function loadLocal(){
- try{
-  let x=JSON.parse(localStorage.getItem('kollektiv-poster-v2'));
-  if(x)Object.assign(state,x);
- }catch(e){}
 }
 function normalizeState(){
  state.strokes=(state.strokes||[]).map(st=>{if(!st.color)st.color=state.draw?.color||'#101010';return st;});
@@ -414,7 +396,7 @@ function normalizeState(){
    s.points=Array.isArray(s.points)?s.points:[];
  });
 }
-loadLocal();normalizeState();
+normalizeState();
 function hydratePhotos(){
  state.photos.forEach((p,i)=>{
   p.x??=W/2;p.y??=H/2;p.w??=360;p.h??=300;p.rot??=0;p.opacity??=100;
@@ -1805,7 +1787,7 @@ function addPhotos(files){
   reader.onload=()=>{
    const original=new Image();
    original.onload=()=>{
-    // Resize large camera files before storing them in localStorage.
+    // Skala ner stora kamerabilder innan de läggs i rummets state.
     const maxSide=1200;
     const scale=Math.min(1,maxSide/Math.max(original.width,original.height));
     const rw=Math.max(1,Math.round(original.width*scale));
@@ -1837,7 +1819,6 @@ function addPhotos(files){
  });
 }
 document.getElementById('photoInput').onchange=e=>{addPhotos(e.target.files);e.target.value=''};
-document.getElementById('cameraInput').onchange=e=>{addPhotos(e.target.files);e.target.value=''};
 
 function point(e){let r=C.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}}
 function eraseAt(p,r=28){
@@ -1882,14 +1863,13 @@ socket.on('roles-shuffled',d=>{
  const me=(d.participants||[]).find(p=>p.id===mySocketId);
  if(me){assignedRole=me.role;setMode(assignedRole,true)}
 });
-socket.on('activity',d=>{const a=document.getElementById('activity');a.textContent=(d.name||'NÅGON')+' · '+(d.action||'JOBBAR');clearTimeout(a._t);a._t=setTimeout(()=>a.textContent='',1500)});
 
 document.getElementById('createRoom').onclick=()=>{
  primeAudio();
  if(!socket.connected){lobbyMessage('Väntar på servern…','error');return}
  saveIdentity();
  lobbyMessage('SKAPAR RUM…');
- socket.timeout(10000).emit('create-room',{name:safeName(),state:serializableState()},(err,res)=>{
+ socket.timeout(10000).emit('create-room',{name:safeName()},(err,res)=>{
    if(err){lobbyMessage('Servern svarade inte. Försök igen.','error');return}
    if(!res?.ok){lobbyMessage(res?.error||'Kunde inte skapa rum.','error');return}
    enterRoom(res);
@@ -1995,62 +1975,14 @@ document.getElementById('posterView').onclick=()=>{
  document.getElementById('posterView').textContent=on?'TILLBAKA':'VISA POSTER';
 };
 
-document.getElementById('random').onclick=()=>{
- const rr=(a,b)=>a+Math.random()*(b-a);
- if(mode==='background'){
-   state.bg.c1=palettes[Math.floor(Math.random()*palettes.length)];
-   state.bg.c2=palettes[Math.floor(Math.random()*palettes.length)];
-   state.bg.c3=palettes[Math.floor(Math.random()*palettes.length)];
-   state.bg.angle=Math.round(rr(0,360));
- }else if(mode==='texture'){
-   state.texture.opacity=Math.round(rr(6,28));
-   state.texture.scale=Math.round(rr(8,30));
- }else if(mode==='stickers'){
-   state.stickers.forEach(o=>{o.rot=Math.round(rr(-35,35));o.opacity=Math.round(rr(70,100))});
- }else if(mode==='copy'){
-   // Copywriter owns size; keep it readable and do not move text.
-   state.texts.forEach(t=>t.size=Math.round(rr(34,82)));
- }else if(mode==='font'){
-   const fonts=['Impact','Arial Black','Arial Narrow','Courier New','Georgia','Times New Roman','Trebuchet MS','Verdana','Lucida Console','Palatino Linotype','Garamond','Bookman Old Style','Century Gothic','Franklin Gothic Medium','Brush Script MT','Comic Sans MS','Copperplate','Rockwell','Futura','Gill Sans','American Typewriter'];
-   state.texts.forEach(t=>{t.font=fonts[Math.floor(Math.random()*fonts.length)];t.h=rr(.72,1.35);t.w=rr(.72,1.35);t.skew=rr(-.22,.22);t.rot=rr(-10,10);t.shadow=Math.round(rr(0,45))});
- }else if(mode==='paint'){
-   state.paint.organic=Math.round(rr(0,70));state.paint.jagged=Math.round(rr(0,55));state.paint.twist=Math.round(rr(0,65));state.paint.swell=Math.round(rr(0,65));state.paint.sticky=Math.round(rr(0,60));
- }else if(mode==='chaos'){
-   Object.keys(state.chaos).forEach(k=>state.chaos[k]=Math.round(rr(0,68)));
- }else if(mode==='photo' && selectedPhoto>=0){
-   const p=state.photos[selectedPhoto];p.rot=Math.round(rr(-12,12));p.distortX=Math.round(rr(-28,28));p.distortY=Math.round(rr(-28,28));p.tintAmount=Math.round(rr(0,28));
- }
- saveLocal();buildControls();render();
-};
-document.getElementById('save').onclick=()=>{
- let versions=JSON.parse(localStorage.getItem('kollektiv-versions-v2')||'[]');versions.unshift({time:new Date().toLocaleString('sv-SE'),state:serializableState()});versions=versions.slice(0,9);localStorage.setItem('kollektiv-versions-v2',JSON.stringify(versions));showVersions();
-};
+
+
 document.getElementById('reset').onclick=()=>{
  if(!confirm('Rensa hela postern för alla i rummet?'))return;
-
- localStorage.removeItem('kollektiv-poster-v2');
- localStorage.removeItem('kollektiv-versions-v2');
-
- state.bg={type:'solid',c1:'#ffffff',c2:'#ffffff',c3:'#ffffff',colors:1,angle:0};
- state.texture={type:'none',opacity:0,scale:18,color:'#111111'};
- state.stickers=[];
- state.texts=[];
- state.strokes=[];
- state.photos=[];
- state.chaos={glitch:0,warp:0,rgb:0,melt:0,echo:0,pixel:0,ripple:0,twist:0};
- state.draw={size:22,opacity:100,color:'#101010'};
- state.paint={material:'RUNDA',size:24,opacity:100,organic:0,swell:0,twist:0,sticky:0,jagged:0,color:'#101010'};
-
+ Object.assign(state,blankState());
  selectedSticker=-1;selectedText=-1;selectedPhoto=-1;
- drawing=false;activeStroke=null;
-
- // Save locally WITHOUT triggering the normal role-scoped sync.
- try{localStorage.setItem('kollektiv-poster-v2',JSON.stringify(serializableState()))}catch(e){}
- buildControls();
- showVersions();
- render();
-
- // RESET is intentionally room-wide, unlike ordinary role edits.
+ drawing=false;activeStroke=null;erasing=false;
+ buildControls();render();
  if(multiplayerActive())socket.emit('reset-room',{room:roomCode});
 };
 
@@ -2095,8 +2027,7 @@ document.getElementById('export').onclick=()=>{
    alert('PNG kunde inte skapas i den här webbläsaren.');
  }
 };
-function showVersions(){let v=JSON.parse(localStorage.getItem('kollektiv-versions-v2')||'[]'),el=document.getElementById('versions');el.innerHTML='';v.forEach((x,i)=>{let d=document.createElement('div');d.className='version';let c=document.createElement('canvas');c.width=60;c.height=90;d.append(c,document.createElement('div'));d.lastChild.textContent=x.time;c.getContext('2d').drawImage(C,0,0,60,90);d.onclick=()=>{Object.assign(state,clone(x.state));saveLocal();buildControls();render()};el.append(d)})}
-showVersions();setMode('paint');
+setMode('paint');
 </script>
 </body>
 </html>
