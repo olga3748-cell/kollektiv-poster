@@ -79,6 +79,20 @@ app.get('*',(_q,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 io.on('connection',socket=>{
  socket.on('create-room',({name}={},ack=()=>{})=>{leave(socket);let c=code(),r={state:blankRoomState(),people:new Map(),vote:null,updated:Date.now()};rooms.set(c,r);let role=availableRole(r);r.people.set(socket.id,{name:cleanName(name),role});socket.join(c);socket.data.room=c;ack({ok:true,room:c,state:r.state,role,participants:list(c)});presence(c)});
  socket.on('join-room',({room,name}={},ack=()=>{})=>{let c=cleanRoom(room),r=rooms.get(c);if(!r)return ack({ok:false,error:'Rummet finns inte längre.'});if(r.people.size>=ROLES.length)return ack({ok:false,error:'Rummet är fullt (max 9 personer).'});leave(socket);let role=availableRole(r);r.people.set(socket.id,{name:cleanName(name),role});socket.join(c);socket.data.room=c;r.updated=Date.now();ack({ok:true,room:c,state:r.state,role,participants:list(c)});presence(c)});
+ socket.on('choose-role',({room,role}={},ack=()=>{})=>{
+  const c=cleanRoom(room),r=rooms.get(c);
+  if(socket.data.room!==c||!r)return ack({ok:false,error:'RUMMET FINNS INTE.'});
+  if(r.people.size>=4)return ack({ok:false,error:'ROLLVAL ÄR BARA ÖPPET NÄR NI ÄR FÄRRE ÄN 4.'});
+  role=String(role||'');
+  if(!ROLES.includes(role))return ack({ok:false,error:'OGILTIG ROLL.'});
+  const p=r.people.get(socket.id);
+  if(!p)return ack({ok:false,error:'DU FINNS INTE I RUMMET.'});
+  const occupied=[...r.people.entries()].some(([id,x])=>id!==socket.id&&x.role===role);
+  if(occupied)return ack({ok:false,error:'ROLLEN ÄR REDAN TAGEN.'});
+  p.role=role;r.updated=Date.now();
+  ack({ok:true,role});
+  presence(c);
+ });
  socket.on('state-update',({room,state}={})=>{let c=cleanRoom(room),r=rooms.get(c);if(socket.data.room!==c||!r)return;let p=r.people.get(socket.id),n=safe(state);if(!p||!n)return;r.state=mergeByRole(r.state,n,p.role);r.updated=Date.now();io.to(c).emit('room-state',{room:c,state:r.state,by:socket.id})});
  socket.on('reset-room',({room}={})=>{let c=cleanRoom(room),r=rooms.get(c);if(socket.data.room!==c||!r)return;r.state=blankRoomState();r.updated=Date.now();io.to(c).emit('room-state',{room:c,state:r.state,by:socket.id,reset:true})});
  socket.on('propose-role-shuffle',({room}={})=>{let c=cleanRoom(room),r=rooms.get(c);if(socket.data.room!==c||!r||r.vote)return;let p=r.people.get(socket.id);r.vote={by:socket.id,byName:p.name,yes:new Set(),voters:new Set()};io.to(c).emit('role-vote-request',votePayload(r))});
@@ -87,4 +101,4 @@ io.on('connection',socket=>{
  socket.on('leave-room',()=>leave(socket));socket.on('disconnect',()=>leave(socket));
 });
 setInterval(()=>{let n=Date.now();for(let[c,r]of rooms)if(!r.people.size&&n-r.updated>6*60*60*1000)rooms.delete(c)},60000).unref();
-server.listen(Number(process.env.PORT||3000),'0.0.0.0',()=>console.log('KOLLEKTIV / POSTER SIMPLE V1.4'));
+server.listen(Number(process.env.PORT||3000),'0.0.0.0',()=>console.log('KOLLEKTIV / POSTER SIMPLE V1.5'));

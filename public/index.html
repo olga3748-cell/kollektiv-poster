@@ -108,6 +108,38 @@ aside{width:270px}
 #simpleRoleHeader{font-size:9px;letter-spacing:.14em;color:#777;margin:5px 0 2px}
 #simpleRoleName{font-size:18px;font-weight:900;color:var(--role);margin-bottom:10px}
 
+
+/* SIMPLE V1.5 — vit, lugn workspace */
+:root{--bg:#ffffff;--panel:#ffffff;--line:#d7d7d7;--muted:#737373;--fg:#111111}
+html,body{background:#fff;color:#111}
+.app{background:#fff}
+.stage{background:#fff;border-color:#d7d7d7}
+.panel{background:#fff;border-color:#d7d7d7;color:#111}
+.panel h2{border-top-color:#e8e8e8;color:#555}
+hr{border-top-color:#e5e5e5}
+button,select,input[type=text],input[type=number]{background:#fff;color:#111;border-color:#bdbdbd}
+button:hover{border-color:#555}
+input[type=color]{background:#fff;border-color:#bbb}
+.row label,.small,.hint{color:#666}
+.value{color:#222}
+#collectiveBox{background:#fafafa;border-color:#ddd}
+#collectiveStatus{color:#666}
+#presence .person,.person{background:#fff;border-color:#ddd;color:#555}
+#leftChat{background:#fff;border-color:#d8d8d8;color:#111}
+.chat-line{border-bottom-color:#eee;color:#333}
+#posterView{background:#fff;border-color:#aaa;color:#111;backdrop-filter:none}
+#voteOverlay,#cameraOverlay{background:rgba(255,255,255,.9)}
+.modal-card{background:#fff!important;color:#111!important;border-color:#aaa!important;box-shadow:0 20px 60px rgba(0,0,0,.18)}
+#lobby{background:#f6f6f6}
+.lobby-card{background:#fff;color:#111;border-color:#cfcfcf;box-shadow:0 25px 70px rgba(0,0,0,.15)}
+.lobby-card p{color:#666}
+#serverState{border-color:#ddd!important;color:#555!important}
+#roleChoice{margin-top:8px;padding-top:8px;border-top:1px solid #e3e3e3}
+#roleChoice .hint{margin:0 0 5px}
+#roleChoiceControls{display:grid;grid-template-columns:1fr auto;gap:5px}
+#roleChoiceControls select{width:100%}
+#canvas{box-shadow:0 0 0 1px #cfcfcf}
+
 </style>
 </head>
 <body>
@@ -129,7 +161,7 @@ aside{width:270px}
 <div class="app">
   <main class="stage"><button id="posterView">VISA POSTER</button><canvas id="canvas" width="600" height="900"></canvas></main>
   <aside class="panel">
-    <h1>KOLLEKTIV / POSTER</h1><div class="small">KOLLEKTIV VERSION · SIMPLE V1.4 · CLEAN</div>
+    <h1>KOLLEKTIV / POSTER</h1><div class="small">KOLLEKTIV VERSION · SIMPLE V1.5 · VIT WORKSPACE</div>
     <hr>
     <div class="modebar" id="modes">
       <button data-mode="background">BAKGRUND</button><button data-mode="texture">TEXTUR</button><button data-mode="stickers">STICKERS</button>
@@ -139,6 +171,13 @@ aside{width:270px}
     <div id="collectiveBox">
       <div id="collectiveStatus"><span id="netDot"></span><strong id="roomLabel">SOLO / EJ ANSLUTEN</strong></div>
       <div id="presence"></div>
+      <div id="roleChoice" class="hidden">
+        <div class="hint">NI ÄR FÄRRE ÄN 4 · VÄLJ EN LEDIG ROLL</div>
+        <div id="roleChoiceControls">
+          <select id="desiredRole"></select>
+          <button id="chooseRole">VÄLJ</button>
+        </div>
+      </div>
       <div class="grid" style="margin-top:6px"><button id="copyRoom">KOPIERA RUMSLÄNK</button><button id="leaveRoom">LÄMNA RUM</button></div>
     </div>
     <div id="simpleRoleHeader">DIN ROLL</div><div id="simpleRoleName">—</div><div id="controls"></div>
@@ -268,15 +307,33 @@ function scheduleRoomSync(){
    socket.emit('state-update',{room:roomCode,state:payload,role:assignedRole||mode});
  },55);
 }
+function updateRoleChoice(){
+ const box=document.getElementById('roleChoice'),sel=document.getElementById('desiredRole');
+ if(!box||!sel)return;
+ const allowed=multiplayerActive() && participants.length>0 && participants.length<4;
+ box.classList.toggle('hidden',!allowed);
+ if(!allowed)return;
+
+ const used=new Set(participants.filter(p=>p.id!==mySocketId).map(p=>p.role));
+ const options=Object.keys(ROLE_LABELS).filter(role=>!used.has(role));
+ sel.innerHTML=options.map(role=>`<option value="${role}">${esc(ROLE_LABELS[role])}</option>`).join('');
+ if(options.includes(assignedRole))sel.value=assignedRole;
+}
 function updatePresence(list=[]){
  participants=list;
- updateRoleLocks();
+ const previousRole=assignedRole;
+ const me=list.find(p=>p.id===mySocketId);
+ if(me?.role)assignedRole=me.role;
+
  const el=document.getElementById('presence');
- if(!el)return;
- el.innerHTML=list.map(p=>`<span class="person ${p.id===mySocketId?'me':''}">${esc(p.name||'ANONYM')} · ${esc(ROLE_LABELS[p.role]||p.role||'—')}</span>`).join('');
+ if(el)el.innerHTML=list.map(p=>`<span class="person ${p.id===mySocketId?'me':''}">${esc(p.name||'ANONYM')} · ${esc(ROLE_LABELS[p.role]||p.role||'—')}</span>`).join('');
+
  updateRoleLocks();
+ updateRoleChoice();
+ if(assignedRole && previousRole && assignedRole!==previousRole)setMode(assignedRole,true);
 }
 function setRoomUI(){
+ updateRoleChoice();
  const dot=document.getElementById('netDot'),lab=document.getElementById('roomLabel');
  if(multiplayerActive()){
    dot.classList.add('on');
@@ -494,6 +551,19 @@ function texture(){
    for(let y=gap;y<H;y+=gap*1.25){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y+6*Math.sin(y*.02));ctx.stroke()}
    ctx.globalAlpha=(t.opacity/100)*.08;
    for(let x=gap*.65;x<W;x+=gap){ctx.fillRect(x-5,0,10,H)}
+ }else if(t.type==='diagonal'){
+   const z=Math.max(5,t.scale||18);
+   ctx.lineWidth=Math.max(1,z*.08);
+   for(let x=-H;x<W+H;x+=z){
+     ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x+H,H);ctx.stroke();
+   }
+ }else if(t.type==='checker'){
+   const z=Math.max(6,t.scale||18);
+   for(let y=0,ry=0;y<H;y+=z,ry++){
+     for(let x=0,rx=0;x<W;x+=z,rx++){
+       if((rx+ry)%2===0)ctx.fillRect(x,y,z,z);
+     }
+   }
  }else if(t.type==='dots'){
    let z=Math.max(3,t.scale||12);for(let y=0;y<H;y+=z)for(let x=0;x<W;x+=z){ctx.beginPath();ctx.arc(x,y,Math.max(.7,z*.12),0,Math.PI*2);ctx.fill()}
  }else if(t.type==='grid'){
@@ -1574,7 +1644,10 @@ function colorRow(label,obj,key){return `<div class="row"><label>${label}</label
 function buildControls(){
  const el=document.getElementById('controls');let s='';
  if(mode==='background')s=`<h2>BAKGRUND</h2><div class="row"><label>TYP</label><select id="bgType"><option value="solid">SOLID</option><option value="gradient">GRADIENT</option></select></div>${colorRow('FÄRG 1',state.bg,'c1')}${colorRow('FÄRG 2',state.bg,'c2')}<div id="third">${colorRow('FÄRG 3',state.bg,'c3')}</div>${slider('VINKEL',state.bg,'angle',0,360,1)}<div class="row"><label>ANTAL</label><select id="bgColors"><option>2</option><option>3</option></select></div>`;
- if(mode==='texture')s=`<h2>TEXTUR</h2><div class="row"><label>MATERIAL</label><select id="texType">${[['dots','PRICKAR'],['lines','LINJER'],['grid','RUTNÄT']].map(x=>`<option value="${x[0]}">${x[1]}</option>`).join('')}</select></div>${slider('OPACITET',state.texture,'opacity')}${slider('SKALA',state.texture,'scale',4,60)}${colorRow('FÄRG',state.texture,'color')}<div class="hint">Grafiska texturer: prickar, linjer och rutnät.</div>`;
+ if(mode==='texture')s=`<h2>TEXTUR</h2><div class="row"><label>MATERIAL</label><select id="texType">${[
+ ['dots','PRICKAR'],['lines','LINJER'],['grid','RUTNÄT'],
+ ['diagonal','DIAGONAL'],['checker','SCHACK'],['xerox','XEROX']
+].map(x=>`<option value="${x[0]}">${x[1]}</option>`).join('')}</select></div>${slider('OPACITET',state.texture,'opacity')}${slider('SKALA',state.texture,'scale',4,60)}${colorRow('FÄRG',state.texture,'color')}<div class="hint">Sex grafiska texturer.</div>`;
  if(mode==='stickers')s=`<h2>STICKERS</h2><div class="object-list">${state.stickers.length?state.stickers.map((x,i)=>`<button data-pick-sticker="${i}" class="${i===selectedSticker?'active':''}">${i+1} · ${x.kind.toUpperCase()}</button>`).join(''):'<span class="hint">Inga stickers ännu.</span>'}</div><div class="grid">${['spiral','heart','star','square','circle'].map(x=>`<button data-add="${x}">${x.toUpperCase()}</button>`).join('')}</div><h2>MINA TECKNINGAR</h2><div class="library">${drawingAssets.map((x,i)=>`<button title="${x.name}" data-drawing="${i}">✎</button>`).join('')}</div>${stickerControls()}`;
  if(mode==='copy')s=`<h2>COPYWRITER</h2><div class="object-list">${state.texts.length?state.texts.map((x,i)=>`<button data-pick-text="${i}" class="${i===selectedText?'active':''}">${i+1} · ${esc((x.text||'TEXT').slice(0,14))}</button>`).join(''):'<span class="hint">Ingen text ännu.</span>'}</div><button id="addText">NYTT TEXTOBJEKT</button>${textControls(false)}`;
  if(mode==='font')s=`<h2>TYPSNITT</h2><div class="object-list">${state.texts.length?state.texts.map((x,i)=>`<button data-pick-text="${i}" class="${i===selectedText?'active':''}">${i+1} · ${esc((x.text||'TEXT').slice(0,14))}</button>`).join(''):'<span class="hint">Ingen text att formge.</span>'}</div>${textControls(true)}`;
@@ -1863,6 +1936,21 @@ socket.on('roles-shuffled',d=>{
  const me=(d.participants||[]).find(p=>p.id===mySocketId);
  if(me){assignedRole=me.role;setMode(assignedRole,true)}
 });
+
+document.getElementById('chooseRole').onclick=()=>{
+ if(!multiplayerActive()||participants.length>=4)return;
+ const role=document.getElementById('desiredRole').value;
+ socket.timeout(6000).emit('choose-role',{room:roomCode,role},(err,res)=>{
+   if(err||!res?.ok){
+     const st=document.getElementById('roleVoteStatus');
+     st.textContent=res?.error||'KUNDE INTE BYTA ROLL';
+     setTimeout(()=>st.textContent='',1800);
+     return;
+   }
+   assignedRole=res.role;
+   setMode(assignedRole,true);
+ });
+};
 
 document.getElementById('createRoom').onclick=()=>{
  primeAudio();
