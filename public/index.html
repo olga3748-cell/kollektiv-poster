@@ -97,31 +97,21 @@ body.poster-only #posterView{position:fixed;right:14px;top:14px}
 @media(max-width:1050px){#leftChat{position:static;width:auto;margin:8px 8px 0}}
 
 
-/* SIMPLE V1 — lugnare gränssnitt */
-body{background:#101010}
-aside{width:270px}
+/* SIMPLE V1.1 — presentation-only simplification on stable V4 */
 #modes{display:none!important}
-#versions,aside>h2:last-of-type{display:none!important}
-aside>hr{display:none}
-aside>.grid:has(#random){display:none!important}
-#collectiveBox{padding:8px;margin-bottom:12px}
-#controls h2{font-size:14px;margin:4px 0 12px}
-#controls .row{margin:10px 0}
-#controls .hint{line-height:1.45;margin-top:10px}
+aside{width:270px}
+#controls h2{font-size:14px;margin:5px 0 12px}
+#controls .hint{line-height:1.45}
 #controls .reset-slider{display:none}
-#controls label{font-size:9px}
-#leftChat{top:auto;bottom:12px;width:145px;padding:7px}
-#chatFeed{height:62px}
-.chat-buttons{grid-template-columns:1fr 1fr}
-.chat-buttons button:nth-child(3),.chat-buttons button:nth-child(4){display:none}
-#roleTools{margin-top:5px}
-#presence .person{font-size:8px}
-.simple-role-title{font-size:9px;letter-spacing:.12em;color:#888;margin-bottom:4px}
-#simpleRoleName{font-size:20px;font-weight:900;color:var(--role);margin-bottom:10px}
-#simpleActions{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:12px}
-#simpleActions button{min-height:34px}
-.poster-only #leftChat{display:none!important}
-@media(max-width:900px){aside{width:auto}#leftChat{position:static;width:auto;margin:8px}}
+#controls .row{margin:10px 0}
+#versions{display:none!important}
+#leftChat{width:145px}
+#chatFeed{height:68px}
+.chat-buttons button:nth-child(3),
+.chat-buttons button:nth-child(4){display:none}
+#collectiveBox{padding:8px}
+#simpleRoleHeader{font-size:9px;letter-spacing:.14em;color:#777;margin:5px 0 2px}
+#simpleRoleName{font-size:18px;font-weight:900;color:var(--role);margin-bottom:10px}
 
 </head>
 <body>
@@ -146,7 +136,7 @@ aside>.grid:has(#random){display:none!important}
 <div class="app">
   <main class="stage"><button id="posterView">VISA POSTER</button><canvas id="canvas" width="600" height="900"></canvas></main>
   <aside class="panel">
-    <h1>KOLLEKTIV / POSTER</h1><div class="small">KOLLEKTIV VERSION · SIMPLE V1</div>
+    <h1>KOLLEKTIV / POSTER</h1><div class="small">KOLLEKTIV VERSION · SIMPLE V1.1</div>
     <hr>
     <div class="modebar" id="modes">
       <button data-mode="background">BAKGRUND</button><button data-mode="texture">TEXTUR</button><button data-mode="stickers">STICKERS</button>
@@ -158,7 +148,7 @@ aside>.grid:has(#random){display:none!important}
       <div id="presence"></div>
       <div class="grid" style="margin-top:6px"><button id="copyRoom">KOPIERA RUMSLÄNK</button><button id="leaveRoom">LÄMNA RUM</button></div>
     </div>
-    <div class="simple-role-title">DIN ROLL</div><div id="simpleRoleName">—</div><div id="simpleActions"></div><div id="controls"></div>
+    <div id="simpleRoleHeader">DIN ROLL</div><div id="simpleRoleName">—</div><div id="controls"></div>
     <hr>
     <div class="grid"><button id="random">SLUMPA</button><button id="save">SPARA VERSION</button><button id="export">EXPORTERA PNG</button><button id="reset" class="danger">RESET</button></div>
     <h2>SPARADE VERSIONER</h2><div id="versions"></div>
@@ -220,16 +210,7 @@ const socket=io({
  timeout:12000
 });
 let roomCode=null,mySocketId=null,applyingRemote=false,syncTimer=null,lastSentJSON='',participants=[];
-let assignedRole=null,currentVote=null,audioCtx=null,cameraStream=null,drawTool='pen',erasing=false,simpleBrush='RUNDA';
-function applySimpleBrush(){
- const presets={
-  RUNDA:{material:'RUNDA',organic:0,swell:0,twist:0,sticky:0,jagged:0},
-  MJUK:{material:'MJUK',organic:18,swell:22,twist:0,sticky:0,jagged:0},
-  TAGGIG:{material:'RUNDA',organic:18,swell:0,twist:0,sticky:0,jagged:72},
-  KLADDIG:{material:'BLÄCK',organic:30,swell:32,twist:0,sticky:72,jagged:0}
- };
- Object.assign(state.paint,presets[simpleBrush]||presets.RUNDA);
-}
+let assignedRole=null,currentVote=null,audioCtx=null,cameraStream=null,drawTool='pen',erasing=false;
 let pendingRoom=(new URLSearchParams(location.search).get('room')||'').trim().toUpperCase();
 let reconnectRoom=sessionStorage.getItem('kollektiv-room')||'';
 
@@ -259,13 +240,12 @@ function setServerState(kind,text){
  document.getElementById('joinExisting').disabled=disabled;
 }
 
-const ROLE_LABELS={background:'BAKGRUND',texture:'TEXTUR',stickers:'STICKERS',text:'TEXT',draw:'RITA',photo:'FOTO'};
+const ROLE_LABELS={background:'BAKGRUND',texture:'TEXTUR',stickers:'STICKERS',copy:'COPYWRITER',font:'TYPSNITT',draw:'TECKNA',paint:'PAINTBRUSH',chaos:'CHAOS',photo:'FOTOGRAF'};
 function primeAudio(){try{audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume()}catch(e){}}
 function voteSound(){try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.frequency.setValueAtTime(620,n);o.frequency.setValueAtTime(820,n+.11);g.gain.setValueAtTime(.08,n);g.gain.exponentialRampToValueAtTime(.001,n+.24);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.25)}catch(e){}}
 function myPerson(){return participants.find(p=>p.id===mySocketId)}
 function updateRoleLocks(){
  const me=myPerson();if(me?.role)assignedRole=me.role;
- const rn=document.getElementById('simpleRoleName');if(rn)rn.textContent=ROLE_LABELS[assignedRole]||assignedRole||'—';
  document.querySelectorAll('#modes button').forEach(b=>{
   const mine=!multiplayerActive()||!assignedRole||b.dataset.mode===assignedRole;
   b.classList.toggle('locked',!mine);b.classList.toggle('my-role',multiplayerActive()&&b.dataset.mode===assignedRole);
@@ -1571,12 +1551,17 @@ function extractForeground(fullCanvas,bgCanvas){
 function setMode(m,force=false){
  if(multiplayerActive()&&assignedRole&&m!==assignedRole&&!force)return;
  mode=m;
- if(m==='text' && selectedText<0 && state.texts.length)selectedText=0;
+ if((m==='font'||m==='copy') && selectedText<0 && state.texts.length)selectedText=0;
  if(m==='stickers' && selectedSticker<0 && state.stickers.length)selectedSticker=0;
  if(m==='photo' && selectedPhoto<0 && state.photos.length)selectedPhoto=0;
  const colors={"background": "#ffcf4a", "texture": "#b7a98b", "stickers": "#ff5c8a", "copy": "#62e6ff", "font": "#c58cff", "draw": "#ff7b4a", "paint": "#d7ff38", "chaos": "#ff3b3b", "photo": "#6fa8ff"};
  document.documentElement.style.setProperty('--role',colors[m]||'#d7ff38');
  document.body.dataset.mode=m;
+ const simpleRoleName=document.getElementById('simpleRoleName');
+ if(simpleRoleName)simpleRoleName.textContent=({
+  background:'BAKGRUND',texture:'TEXTUR',stickers:'STICKERS',copy:'COPYWRITER',
+  font:'TYPSNITT',draw:'TECKNA',paint:'PAINTBRUSH',chaos:'CHAOS',photo:'FOTOGRAF'
+ })[m]||m.toUpperCase();
  document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
  updateRoleLocks();
  buildControls();render();
@@ -1608,12 +1593,29 @@ function buildControls(){
  if(mode==='background')s=`<h2>BAKGRUND</h2><div class="row"><label>TYP</label><select id="bgType"><option value="solid">SOLID</option><option value="gradient">GRADIENT</option></select></div>${colorRow('FÄRG 1',state.bg,'c1')}${colorRow('FÄRG 2',state.bg,'c2')}<div id="third">${colorRow('FÄRG 3',state.bg,'c3')}</div>${slider('VINKEL',state.bg,'angle',0,360,1)}<div class="row"><label>ANTAL</label><select id="bgColors"><option>2</option><option>3</option></select></div>`;
  if(mode==='texture')s=`<h2>TEXTUR</h2><div class="row"><label>MATERIAL</label><select id="texType">${[['dots','PRICKAR'],['lines','LINJER'],['grid','RUTNÄT']].map(x=>`<option value="${x[0]}">${x[1]}</option>`).join('')}</select></div>${slider('OPACITET',state.texture,'opacity')}${slider('SKALA',state.texture,'scale',4,60)}${colorRow('FÄRG',state.texture,'color')}<div class="hint">Grafiska texturer: prickar, linjer och rutnät.</div>`;
  if(mode==='stickers')s=`<h2>STICKERS</h2><div class="object-list">${state.stickers.length?state.stickers.map((x,i)=>`<button data-pick-sticker="${i}" class="${i===selectedSticker?'active':''}">${i+1} · ${x.kind.toUpperCase()}</button>`).join(''):'<span class="hint">Inga stickers ännu.</span>'}</div><div class="grid">${['spiral','heart','star','square','circle'].map(x=>`<button data-add="${x}">${x.toUpperCase()}</button>`).join('')}</div><h2>MINA TECKNINGAR</h2><div class="library">${drawingAssets.map((x,i)=>`<button title="${x.name}" data-drawing="${i}">✎</button>`).join('')}</div>${stickerControls()}`;
- if(mode==='text')s=`<h2>TEXT</h2><div class="object-list">${state.texts.length?state.texts.map((x,i)=>`<button data-pick-text="${i}" class="${i===selectedText?'active':''}">${i+1} · ${esc((x.text||'TEXT').slice(0,14))}</button>`).join(''):'<span class="hint">Ingen text ännu.</span>'}</div><button id="addText">NY TEXT</button>${simpleTextControls()}`;
- if(mode==='draw')s=`<h2>RITA</h2>
+ if(mode==='copy')s=`<h2>COPYWRITER</h2><div class="object-list">${state.texts.length?state.texts.map((x,i)=>`<button data-pick-text="${i}" class="${i===selectedText?'active':''}">${i+1} · ${esc((x.text||'TEXT').slice(0,14))}</button>`).join(''):'<span class="hint">Ingen text ännu.</span>'}</div><button id="addText">NYTT TEXTOBJEKT</button>${textControls(false)}`;
+ if(mode==='font')s=`<h2>TYPSNITT</h2><div class="object-list">${state.texts.length?state.texts.map((x,i)=>`<button data-pick-text="${i}" class="${i===selectedText?'active':''}">${i+1} · ${esc((x.text||'TEXT').slice(0,14))}</button>`).join(''):'<span class="hint">Ingen text att formge.</span>'}</div>${textControls(true)}`;
+ if(mode==='draw')s=`<h2>TECKNA</h2>
 <div class="grid"><button id="drawPen" class="${drawTool==='pen'?'active':''}">RITA</button><button id="drawEraser" class="${drawTool==='eraser'?'active':''}">SUDDA</button></div>
 ${colorRow('FÄRG',state.draw,'color')}
-<div class="row"><label>PENSEL</label><select id="simpleBrush"><option value="RUNDA">NORMAL</option><option value="MJUK">MJUK</option><option value="TAGGIG">TAGGIG</option><option value="KLADDIG">KLADDIG</option></select></div>
-<div class="hint">${drawTool==='eraser'?'Dra över teckningen för att sudda.':'Rita direkt på postern.'}</div>`;
+<div class="hint">${drawTool==='eraser'?'Dra över teckningen för att sudda delar av penseldragen.':'Klicka och dra för att rita.'}</div>`;
+ if(mode==='paint')s=`<h2>PAINTBRUSH / V21</h2>
+<div class="row"><label>MATERIAL</label><select id="material">${['RUNDA','MJUK','HÅRD','BLÄCK','TORR','MARKER','NEON'].map(x=>`<option>${x}</option>`).join('')}</select></div>
+<div class="hint" id="materialNote">${mats[state.paint.material]?.note||''}</div>
+${slider('GRUNDSTORLEK',state.paint,'size',2,110)}
+${slider('OPACITET',state.paint,'opacity',0,100)}
+${colorRow('FÄRG',state.paint,'color')}
+${slider('ORGANISK',state.paint,'organic',0,100)}
+${slider('SVÄLLER',state.paint,'swell',0,100)}
+${slider('SNURR',state.paint,'twist',0,100)}
+${slider('KLADDIG',state.paint,'sticky',0,100)}
+${slider('TAGGIG',state.paint,'jagged',0,100)}
+<div class="grid" style="margin-top:8px"><button id="brushNormal">NORMAL</button><button id="brushExtreme">ALLT 100</button></div>
+<div class="hint">Alla befintliga TECKNA-drag räknas om live från originalpunkterna. Ingen markering behövs.</div>`;
+ if(mode==='chaos')s=`<h2>CHAOS</h2>${slider('GLITCH',state.chaos,'glitch')}${slider('WARP',state.chaos,'warp')}${slider('RGB SHIFT',state.chaos,'rgb')}${slider('MELT',state.chaos,'melt')}${slider('ECHO',state.chaos,'echo')}${slider('PIXEL',state.chaos,'pixel')}${slider('RIPPLE',state.chaos,'ripple')}${slider('TWIST',state.chaos,'twist')}<div class="hint">Experimentell förvrängning av hela den befintliga postern. Effekten ligger kvar även när du byter arbetsläge.</div><div class="grid" style="margin-top:10px">
+<button id="chaosNormal">NORMAL</button>
+<button id="chaosMax">ALLT 100</button>
+</div>`;
  if(mode==='photo')s=`<h2>FOTOGRAF</h2><div class="grid"><button id="importPhotos">IMPORTERA FOTON</button><button id="camera">ÖPPNA KAMERA</button></div><div class="hint">På Render/HTTPS öppnas datorns webbkamera direkt.</div><div class="object-list">${state.photos.length?state.photos.map((x,i)=>`<button data-pick-photo="${i}" class="${i===selectedPhoto?'active':''}">FOTO ${i+1}</button>`).join(''):'<span class="hint">Inga foton ännu.</span>'}</div>${photoControls()}`;
  el.innerHTML=s;
  wireControls();
@@ -1643,19 +1645,6 @@ function photoControls(){
  ${slider('FILTERGROVHET',p,'filterSize',2,28)}
  <button id="delPhoto" class="danger">TA BORT FOTO</button>`;
 }
-
-function simpleTextControls(){
- let i=selectedText>=0?selectedText:(state.texts.length?0:-1),o=state.texts[i??-1];
- if(!o)return '<div class="hint">Skapa en text först.</div>';
- o.font??='Impact';o.x??=W/2;o.y??=H/2;o.size??=52;
- const fonts=['Impact','Courier New','Georgia','Arial Narrow','Comic Sans MS','Brush Script MT'];
- return `<div class="row"><label>TEXT</label><input id="textValue" type="text" value="${esc(o.text)}"></div>
- ${slider('STORLEK',o,'size',10,150)}
- ${colorRow('FÄRG',o,'color')}
- <div class="row"><label>TYPSNITT</label><select id="fontFamily">${fonts.map(f=>`<option value="${f}">${f.toUpperCase()}</option>`).join('')}</select></div>
- <div class="grid"><button id="moveText">FLYTTA</button><button id="delText" class="danger">TA BORT</button></div>`;
-}
-
 function textControls(fontOnly){
  let i=selectedText>=0?selectedText:(fontOnly&&state.texts.length?0:-1),o=state.texts[i??-1];
  if(!o)return '<div class="hint">Välj ett textobjekt.</div>';
@@ -1679,13 +1668,9 @@ function textControls(fontOnly){
   'Impact',
   'Courier New',
   'Georgia',
-  'Arial Black',
   'Arial Narrow',
-  'Times New Roman',
-  'Trebuchet MS',
   'Comic Sans MS',
-  'Brush Script MT',
-  'Copperplate'
+  'Brush Script MT'
  ];
 
  return `<h2>VALD TEXT</h2>
@@ -1703,8 +1688,8 @@ function textControls(fontOnly){
 function esc(x){return String(x||'').replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;')}
 function wireControls(){
  const el=document.getElementById('controls');
- el.querySelectorAll('input[type=color]').forEach(i=>i.oninput=()=>{let obj=mode==='background'?state.bg:mode==='texture'?state.texture:mode==='stickers'?state.stickers[selectedSticker]:mode==='draw'?state.draw:mode==='paint'?state.paint:mode==='text'?state.texts[selectedText]:state.photos[selectedPhoto];if(obj)obj[i.dataset.k]=i.value;saveLocal();render()});
- el.querySelectorAll('input[type=range]').forEach(i=>i.oninput=()=>{let obj=mode==='background'?state.bg:mode==='texture'?state.texture:mode==='stickers'?state.stickers[selectedSticker]:mode==='draw'?state.draw:mode==='paint'?state.paint:mode==='text'?state.texts[selectedText]:mode==='photo'?state.photos[selectedPhoto]:state.chaos;if(obj){obj[i.dataset.k]=+i.value;i.nextElementSibling.textContent=fmtValue(i.value,i.step);saveLocal();render()}});
+ el.querySelectorAll('input[type=color]').forEach(i=>i.oninput=()=>{let obj=mode==='background'?state.bg:mode==='texture'?state.texture:mode==='stickers'?state.stickers[selectedSticker]:mode==='draw'?state.draw:mode==='paint'?state.paint:mode==='copy'||mode==='font'?state.texts[selectedText]:state.photos[selectedPhoto];if(obj)obj[i.dataset.k]=i.value;saveLocal();render()});
+ el.querySelectorAll('input[type=range]').forEach(i=>i.oninput=()=>{let obj=mode==='background'?state.bg:mode==='texture'?state.texture:mode==='stickers'?state.stickers[selectedSticker]:mode==='draw'?state.draw:mode==='paint'?state.paint:mode==='copy'||mode==='font'?state.texts[selectedText]:mode==='photo'?state.photos[selectedPhoto]:state.chaos;if(obj){obj[i.dataset.k]=+i.value;i.nextElementSibling.textContent=fmtValue(i.value,i.step);saveLocal();render()}});
  const q=id=>document.getElementById(id);
  el.querySelectorAll('[data-pick-sticker]').forEach(b=>b.onclick=()=>{selectedSticker=+b.dataset.pickSticker;buildControls();render()});
  el.querySelectorAll('[data-pick-text]').forEach(b=>b.onclick=()=>{selectedText=+b.dataset.pickText;buildControls();render()});
@@ -1778,18 +1763,6 @@ if(q('chaosMax'))q('chaosMax').onclick=()=>{
  saveLocal();buildControls();render();
 };
 if(q('importPhotos'))q('importPhotos').onclick=()=>document.getElementById('photoInput').click();
-
-if(q('textValue'))q('textValue').oninput=()=>{if(state.texts[selectedText]){state.texts[selectedText].text=q('textValue').value;saveLocal();render()}};
-if(q('fontFamily')){
- const t=state.texts[selectedText];
- if(t){q('fontFamily').value=t.font||'Impact';q('fontFamily').onchange=()=>{t.font=q('fontFamily').value;saveLocal();render()}}
-}
-if(q('moveText'))q('moveText').onclick=()=>{alert('Flytta texten med X/Y är borttaget i Simple V1 för att hålla gränssnittet lugnt. Placeringen slumpas lätt istället.');if(state.texts[selectedText]){state.texts[selectedText].x=W*(.3+Math.random()*.4);state.texts[selectedText].y=H*(.3+Math.random()*.4);saveLocal();render()}};
-
-if(q('simpleBrush')){
- q('simpleBrush').value=simpleBrush;
- q('simpleBrush').onchange=()=>{simpleBrush=q('simpleBrush').value;applySimpleBrush();saveLocal();render()};
-}
 if(q('drawPen'))q('drawPen').onclick=()=>{drawTool='pen';buildControls()};
 if(q('drawEraser'))q('drawEraser').onclick=()=>{drawTool='eraser';buildControls()};
 if(q('camera'))q('camera').onclick=openCamera;

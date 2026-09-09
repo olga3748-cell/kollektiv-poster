@@ -6,7 +6,7 @@ const app=express(),server=http.createServer(app);
 const io=new Server(server,{maxHttpBufferSize:12e6,pingTimeout:20000,pingInterval:10000});
 app.use(express.static(path.join(__dirname,'public'),{extensions:['html']}));
 const rooms=new Map(),CHARS='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const ROLES=['background','texture','stickers','text','draw','photo'];
+const ROLES=['background','texture','stickers','copy','font','draw','paint','chaos','photo'];
 const PHRASES=new Set(['JAG ÄR NÖJD','JAG ÄR INTE NÖJD','MER!','MINDRE!','SPARA DEN HÄR','VÄNTA']);
 const cleanRoom=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8);
 const cleanName=v=>String(v||'ANONYM').replace(/[<>]/g,'').trim().slice(0,24)||'ANONYM';
@@ -28,9 +28,16 @@ function mergeByRole(base,next,role){
  if(role==='background')base.bg=next.bg;
  else if(role==='texture')base.texture=next.texture;
  else if(role==='stickers')base.stickers=next.stickers;
- else if(role==='draw'){base.draw=next.draw;base.paint=next.paint;base.strokes=next.strokes}
+ else if(role==='draw'){base.draw=next.draw;base.strokes=next.strokes}
+ else if(role==='paint')base.paint=next.paint;
+ else if(role==='chaos')base.chaos=next.chaos;
  else if(role==='photo')base.photos=next.photos;
- else if(role==='text')base.texts=next.texts;
+ else if(role==='copy'){
+  base.texts=base.texts||[];for(let i=0;i<(next.texts||[]).length;i++){let n=next.texts[i],b=base.texts[i]||{};base.texts[i]={...b,text:n.text,size:n.size,color:n.color};}
+  if((next.texts||[]).length!==base.texts.length)base.texts=next.texts;
+ }else if(role==='font'){
+  base.texts=base.texts||[];for(let i=0;i<(next.texts||[]).length;i++){let n=next.texts[i],b=base.texts[i]||{};base.texts[i]={...b,x:n.x,y:n.y,h:n.h,w:n.w,skew:n.skew,rot:n.rot,shadow:n.shadow,font:n.font};}
+ }
  return base;
 }
 app.get('/health',(_q,res)=>res.json({ok:true,rooms:rooms.size}));
@@ -38,7 +45,7 @@ app.get('/r/:code',(q,res)=>res.redirect('/?room='+encodeURIComponent(cleanRoom(
 app.get('*',(_q,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 io.on('connection',socket=>{
  socket.on('create-room',({name,state}={},ack=()=>{})=>{leave(socket);let c=code(),r={state:safe(state),people:new Map(),vote:null,updated:Date.now()};rooms.set(c,r);let role=availableRole(r);r.people.set(socket.id,{name:cleanName(name),role});socket.join(c);socket.data.room=c;ack({ok:true,room:c,state:r.state,role,participants:list(c)});presence(c)});
- socket.on('join-room',({room,name}={},ack=()=>{})=>{let c=cleanRoom(room),r=rooms.get(c);if(!r)return ack({ok:false,error:'Rummet finns inte längre.'});if(r.people.size>=ROLES.length)return ack({ok:false,error:'Rummet är fullt (max 6 personer).'});leave(socket);let role=availableRole(r);r.people.set(socket.id,{name:cleanName(name),role});socket.join(c);socket.data.room=c;r.updated=Date.now();ack({ok:true,room:c,state:r.state,role,participants:list(c)});presence(c)});
+ socket.on('join-room',({room,name}={},ack=()=>{})=>{let c=cleanRoom(room),r=rooms.get(c);if(!r)return ack({ok:false,error:'Rummet finns inte längre.'});if(r.people.size>=ROLES.length)return ack({ok:false,error:'Rummet är fullt (max 9 personer).'});leave(socket);let role=availableRole(r);r.people.set(socket.id,{name:cleanName(name),role});socket.join(c);socket.data.room=c;r.updated=Date.now();ack({ok:true,room:c,state:r.state,role,participants:list(c)});presence(c)});
  socket.on('state-update',({room,state}={})=>{let c=cleanRoom(room),r=rooms.get(c);if(socket.data.room!==c||!r)return;let p=r.people.get(socket.id),n=safe(state);if(!p||!n)return;r.state=mergeByRole(r.state,n,p.role);r.updated=Date.now();io.to(c).emit('room-state',{room:c,state:r.state,by:socket.id})});
  socket.on('propose-role-shuffle',({room}={})=>{let c=cleanRoom(room),r=rooms.get(c);if(socket.data.room!==c||!r||r.vote)return;let p=r.people.get(socket.id);r.vote={by:socket.id,byName:p.name,yes:new Set([socket.id]),voters:new Set([socket.id])};io.to(c).emit('role-vote-request',votePayload(r));if(r.people.size===1)shuffle(c,r)});
  socket.on('role-vote',({room,yes}={})=>{let c=cleanRoom(room),r=rooms.get(c);if(socket.data.room!==c||!r?.vote||r.vote.voters.has(socket.id))return;r.vote.voters.add(socket.id);if(!yes){let p=r.people.get(socket.id);r.vote=null;io.to(c).emit('role-vote-cancelled',{byName:p?.name||'NÅGON'});return}r.vote.yes.add(socket.id);if(r.vote.yes.size===r.people.size)shuffle(c,r);else io.to(c).emit('role-vote-state',votePayload(r))});
