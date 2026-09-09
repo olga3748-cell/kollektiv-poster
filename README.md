@@ -1,28 +1,23 @@
-# KOLLEKTIV / POSTER — Multiplayer V3
+# KOLLEKTIV / POSTER — Multiplayer V4
 
-## Nya funktioner
-- Varje deltagare får en egen låst roll i multiplayer.
-- FÖRESLÅ ROLLBYTE startar en omröstning.
-- ALLA aktiva deltagare måste rösta JA.
-- Ett enda NEJ avbryter bytet.
-- När alla säger JA slumpas samtliga till nya roller.
-- Ett kort ljud spelas hos de andra när någon föreslår rollbyte.
-- Förinställd snabbchatt.
-- Diskret aktivitetsstatus.
-- SPARA PNG och SPARA PDF.
-- Fler grafiska texturer: prickar, linjer, rutnät, diagonal, korsraster,
-  halftone, schack, vågor och ränder.
-- Fler systemtypsnitt. Inga Sixtyfour/UnifrakturMaguntia-webbfonter.
+Den här versionen är medvetet enklare och bygger på stabila Multiplayer V2.
 
-## Lokalt
+## Fixat
+- Chatten sitter till vänster och består av sex fasta fraser.
+- Rollbyte kräver JA från ALLA aktiva deltagare. Ett NEJ avbryter.
+- Ett kort ljud spelas när någon annan föreslår rollbyte.
+- Roller är unika: två personer kan inte ha samma roll samtidigt. Max 9 personer.
+- Rollknapparna är låsta till den roll servern har tilldelat dig.
+- Servern slår ihop ändringar per roll i stället för att låta hela postern skriva över varandra.
+  Det gör att t.ex. TECKNA, BAKGRUND och COPYWRITER kan arbeta samtidigt.
+- PAINTBRUSH-koden är återtagen från stabil V2 och inte ombyggd.
+- FOTOGRAF använder riktig getUserMedia-webbkamera på HTTPS/Render.
+- TECKNA har RITA / SUDDA. Suddgummit delar bort de delar av draget man drar över.
+- Typsnittslistan är nedskalad till 10 tydligare olika systemtypsnitt.
+
+## Kör
 npm install
 npm start
 
-Öppna http://localhost:3000
-
-## Render
-Build command: npm install
-Start command: npm start
-
-OBS: PDF-export använder jsPDF från CDN, så internet behövs för PDF.
-PNG fungerar utan den externa PDF-biblioteket.
+Öppna http://localhost:3000, eller deploya hela mappen på Render.
+Kamera kräver HTTPS eller localhost och webbläsarens kameratillstånd.

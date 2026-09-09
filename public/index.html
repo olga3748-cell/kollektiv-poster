@@ -77,13 +77,50 @@ body.poster-only #posterView{position:fixed;right:14px;top:14px}
 .share-room input{flex:1}
 @media(max-width:650px){.lobby-choice{grid-template-columns:1fr}.lobby-title{font-size:26px!important}}
 
+
+/* V4: enklare kollektiv UI */
+#leftChat{position:fixed;left:12px;top:12px;width:170px;z-index:40;background:#0d0d0d;border:1px solid #353535;padding:8px}
+#leftChat h3{font-size:10px;letter-spacing:.12em;margin:0 0 6px}
+#chatFeed{height:104px;overflow:auto;border:1px solid #292929;background:#080808;padding:5px;margin-bottom:6px}
+.chat-line{font-size:9px;line-height:1.35;margin-bottom:4px;color:#aaa}.chat-line b{color:#eee}
+.chat-buttons{display:grid;grid-template-columns:1fr 1fr;gap:3px}.chat-buttons button{font-size:8px;padding:5px 2px}
+#activity{font-size:9px;color:#aaa;min-height:13px;margin-top:5px}
+#roleTools{border-top:1px solid #333;margin-top:7px;padding-top:7px}
+#roleVoteStatus{font-size:9px;color:#bbb;margin-top:4px;min-height:13px}
+#modes button.locked{opacity:.18;cursor:not-allowed}
+#modes button.my-role{opacity:1;border-color:var(--role);box-shadow:inset 0 -2px 0 var(--role)}
+#voteOverlay,#cameraOverlay{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9000;display:none;place-items:center}
+#voteOverlay.show,#cameraOverlay.show{display:grid}
+.modal-card{width:min(480px,92vw);background:#101010;border:1px solid #777;padding:16px}
+.modal-card h2{margin:0 0 8px}
+#cameraVideo{width:100%;max-height:65vh;background:#000;object-fit:contain;margin:8px 0}
+@media(max-width:1050px){#leftChat{position:static;width:auto;margin:8px 8px 0}}
+
 </style>
 </head>
 <body>
+<div id="leftChat">
+  <h3>KOLLEKTIV CHAT</h3>
+  <div id="chatFeed"></div>
+  <div class="chat-buttons">
+    <button data-chat="JAG ÄR NÖJD">NÖJD</button>
+    <button data-chat="JAG ÄR INTE NÖJD">INTE NÖJD</button>
+    <button data-chat="MER!">MER!</button>
+    <button data-chat="MINDRE!">MINDRE!</button>
+    <button data-chat="SPARA DEN HÄR">SPARA</button>
+    <button data-chat="VÄNTA">VÄNTA</button>
+  </div>
+  <div id="activity"></div>
+  <div id="roleTools">
+    <button id="proposeRoles" style="width:100%">FÖRESLÅ ROLLBYTE</button>
+    <div id="roleVoteStatus"></div>
+  </div>
+</div>
+
 <div class="app">
   <main class="stage"><button id="posterView">VISA POSTER</button><canvas id="canvas" width="600" height="900"></canvas></main>
   <aside class="panel">
-    <h1>KOLLEKTIV / POSTER</h1><div class="small">KOLLEKTIV VERSION · MULTIPLAYER V2</div>
+    <h1>KOLLEKTIV / POSTER</h1><div class="small">KOLLEKTIV VERSION · MULTIPLAYER V4 · ENKLARE</div>
     <hr>
     <div class="modebar" id="modes">
       <button data-mode="background">BAKGRUND</button><button data-mode="texture">TEXTUR</button><button data-mode="stickers">STICKERS</button>
@@ -104,6 +141,18 @@ body.poster-only #posterView{position:fixed;right:14px;top:14px}
 <input id="photoInput" type="file" accept="image/*" multiple class="hidden">
 <input id="cameraInput" type="file" accept="image/*" capture="environment" class="hidden">
 
+
+<div id="voteOverlay"><div class="modal-card">
+  <h2>BYTA ROLLER?</h2>
+  <div id="voteText" class="hint">Alla måste godkänna. Ett NEJ avbryter.</div>
+  <div class="grid" style="margin-top:10px"><button id="voteYes">JA</button><button id="voteNo" class="danger">NEJ</button></div>
+</div></div>
+<div id="cameraOverlay"><div class="modal-card">
+  <h2>KAMERA</h2>
+  <video id="cameraVideo" autoplay playsinline muted></video>
+  <div id="cameraMsg" class="hint"></div>
+  <div class="grid"><button id="takePhoto">TA BILD</button><button id="closeCamera">STÄNG</button></div>
+</div></div>
 <div id="lobby">
   <div class="lobby-card">
     <h2 class="lobby-title">KOLLEKTIV<br>/ POSTER</h2>
@@ -145,6 +194,7 @@ const socket=io({
  timeout:12000
 });
 let roomCode=null,mySocketId=null,applyingRemote=false,syncTimer=null,lastSentJSON='',participants=[];
+let assignedRole=null,currentVote=null,audioCtx=null,cameraStream=null,drawTool='pen',erasing=false;
 let pendingRoom=(new URLSearchParams(location.search).get('room')||'').trim().toUpperCase();
 let reconnectRoom=sessionStorage.getItem('kollektiv-room')||'';
 
@@ -173,6 +223,34 @@ function setServerState(kind,text){
  document.getElementById('createRoom').disabled=disabled;
  document.getElementById('joinExisting').disabled=disabled;
 }
+
+const ROLE_LABELS={background:'BAKGRUND',texture:'TEXTUR',stickers:'STICKERS',copy:'COPYWRITER',font:'TYPSNITT',draw:'TECKNA',paint:'PAINTBRUSH',chaos:'CHAOS',photo:'FOTOGRAF'};
+function primeAudio(){try{audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume()}catch(e){}}
+function voteSound(){try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.frequency.setValueAtTime(620,n);o.frequency.setValueAtTime(820,n+.11);g.gain.setValueAtTime(.08,n);g.gain.exponentialRampToValueAtTime(.001,n+.24);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.25)}catch(e){}}
+function myPerson(){return participants.find(p=>p.id===mySocketId)}
+function updateRoleLocks(){
+ const me=myPerson();if(me?.role)assignedRole=me.role;
+ document.querySelectorAll('#modes button').forEach(b=>{
+  const mine=!multiplayerActive()||!assignedRole||b.dataset.mode===assignedRole;
+  b.classList.toggle('locked',!mine);b.classList.toggle('my-role',multiplayerActive()&&b.dataset.mode===assignedRole);
+ });
+}
+function addChat(msg){
+ const f=document.getElementById('chatFeed');if(!f)return;
+ const d=document.createElement('div');d.className='chat-line';
+ const b=document.createElement('b');b.textContent=(msg.name||'ANONYM')+' · ';
+ d.append(b,document.createTextNode(msg.phrase||''));f.appendChild(d);f.scrollTop=f.scrollHeight;
+ while(f.children.length>10)f.firstChild.remove();
+}
+function showVote(v){
+ currentVote=v||null;const ov=document.getElementById('voteOverlay'),st=document.getElementById('roleVoteStatus');
+ if(!v){ov.classList.remove('show');st.textContent='';return}
+ st.textContent=`${v.yes}/${v.total} HAR GODKÄNT`;
+ const voted=(v.voters||[]).includes(mySocketId);
+ document.getElementById('voteText').textContent=`${v.byName||'NÅGON'} VILL BYTA ROLLER · ${v.yes}/${v.total} JA`;
+ ov.classList.toggle('show',!voted);
+}
+
 function scheduleRoomSync(){
  if(!multiplayerActive()||applyingRemote)return;
  clearTimeout(syncTimer);
@@ -180,14 +258,16 @@ function scheduleRoomSync(){
    const payload=serializableState(),json=JSON.stringify(payload);
    if(json===lastSentJSON)return;
    lastSentJSON=json;
-   socket.emit('state-update',{room:roomCode,state:payload});
+   socket.emit('state-update',{room:roomCode,state:payload,role:assignedRole||mode});
  },55);
 }
 function updatePresence(list=[]){
  participants=list;
+ updateRoleLocks();
  const el=document.getElementById('presence');
  if(!el)return;
- el.innerHTML=list.map(p=>`<span class="person ${p.id===mySocketId?'me':''}">${esc(p.name||'ANONYM')} · ${(p.role||'—').toUpperCase()}</span>`).join('');
+ el.innerHTML=list.map(p=>`<span class="person ${p.id===mySocketId?'me':''}">${esc(p.name||'ANONYM')} · ${esc(ROLE_LABELS[p.role]||p.role||'—')}</span>`).join('');
+ updateRoleLocks();
 }
 function setRoomUI(){
  const dot=document.getElementById('netDot'),lab=document.getElementById('roomLabel');
@@ -218,10 +298,11 @@ function enterRoom(res){
  history.replaceState(null,'',location.pathname+'?room='+encodeURIComponent(roomCode));
 
  updatePresence(res.participants||[]);
+ assignedRole=res.role||myPerson()?.role||assignedRole;
  setRoomUI();
- buildControls();
- render();
- socket.emit('presence-role',{room:roomCode,role:mode});
+ if(assignedRole)setMode(assignedRole,true);
+ else{buildControls();render()}
+ updateRoleLocks();
 }
 function joinRoom(code,{quiet=false}={}){
  code=(code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8);
@@ -1451,7 +1532,8 @@ function extractForeground(fullCanvas,bgCanvas){
  fc.putImageData(out,0,0);
  return fg;
 }
-function setMode(m){
+function setMode(m,force=false){
+ if(multiplayerActive()&&assignedRole&&m!==assignedRole&&!force)return;
  mode=m;
  if((m==='font'||m==='copy') && selectedText<0 && state.texts.length)selectedText=0;
  if(m==='stickers' && selectedSticker<0 && state.stickers.length)selectedSticker=0;
@@ -1460,7 +1542,7 @@ function setMode(m){
  document.documentElement.style.setProperty('--role',colors[m]||'#d7ff38');
  document.body.dataset.mode=m;
  document.querySelectorAll('#modes button').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
- if(multiplayerActive())socket.emit('presence-role',{room:roomCode,role:m});
+ updateRoleLocks();
  buildControls();render();
 }
 document.querySelectorAll('#modes button').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
@@ -1492,7 +1574,10 @@ function buildControls(){
  if(mode==='stickers')s=`<h2>STICKERS</h2><div class="object-list">${state.stickers.length?state.stickers.map((x,i)=>`<button data-pick-sticker="${i}" class="${i===selectedSticker?'active':''}">${i+1} · ${x.kind.toUpperCase()}</button>`).join(''):'<span class="hint">Inga stickers ännu.</span>'}</div><div class="grid">${['spiral','heart','star','square','circle'].map(x=>`<button data-add="${x}">${x.toUpperCase()}</button>`).join('')}</div><h2>MINA TECKNINGAR</h2><div class="library">${drawingAssets.map((x,i)=>`<button title="${x.name}" data-drawing="${i}">✎</button>`).join('')}</div>${stickerControls()}`;
  if(mode==='copy')s=`<h2>COPYWRITER</h2><div class="object-list">${state.texts.length?state.texts.map((x,i)=>`<button data-pick-text="${i}" class="${i===selectedText?'active':''}">${i+1} · ${esc((x.text||'TEXT').slice(0,14))}</button>`).join(''):'<span class="hint">Ingen text ännu.</span>'}</div><button id="addText">NYTT TEXTOBJEKT</button>${textControls(false)}`;
  if(mode==='font')s=`<h2>TYPSNITT</h2><div class="object-list">${state.texts.length?state.texts.map((x,i)=>`<button data-pick-text="${i}" class="${i===selectedText?'active':''}">${i+1} · ${esc((x.text||'TEXT').slice(0,14))}</button>`).join(''):'<span class="hint">Ingen text att formge.</span>'}</div>${textControls(true)}`;
- if(mode==='draw')s=`<h2>TECKNA</h2>${colorRow('FÄRG',state.draw,'color')}<div class="hint">Klicka och dra. Originalrörelsen sparas som punkter och kan sedan bearbetas retroaktivt i PAINTBRUSH.</div>`;
+ if(mode==='draw')s=`<h2>TECKNA</h2>
+<div class="grid"><button id="drawPen" class="${drawTool==='pen'?'active':''}">RITA</button><button id="drawEraser" class="${drawTool==='eraser'?'active':''}">SUDDA</button></div>
+${colorRow('FÄRG',state.draw,'color')}
+<div class="hint">${drawTool==='eraser'?'Dra över teckningen för att sudda delar av penseldragen.':'Klicka och dra för att rita.'}</div>`;
  if(mode==='paint')s=`<h2>PAINTBRUSH / V21</h2>
 <div class="row"><label>MATERIAL</label><select id="material">${['RUNDA','MJUK','HÅRD','BLÄCK','TORR','MARKER','NEON'].map(x=>`<option>${x}</option>`).join('')}</select></div>
 <div class="hint" id="materialNote">${mats[state.paint.material]?.note||''}</div>
@@ -1510,7 +1595,7 @@ ${slider('TAGGIG',state.paint,'jagged',0,100)}
 <button id="chaosNormal">NORMAL</button>
 <button id="chaosMax">ALLT 100</button>
 </div>`;
- if(mode==='photo')s=`<h2>FOTOGRAF</h2><div class="grid"><button id="importPhotos">IMPORTERA FOTON</button><button id="camera">KAMERA / TA BILD</button></div><div class="hint">Livekamera kan kräva localhost/https. Om webbläsaren blockerar den används kamerans/bildväljarens vanliga dialog.</div><div class="object-list">${state.photos.length?state.photos.map((x,i)=>`<button data-pick-photo="${i}" class="${i===selectedPhoto?'active':''}">FOTO ${i+1}</button>`).join(''):'<span class="hint">Inga foton ännu.</span>'}</div>${photoControls()}`;
+ if(mode==='photo')s=`<h2>FOTOGRAF</h2><div class="grid"><button id="importPhotos">IMPORTERA FOTON</button><button id="camera">ÖPPNA KAMERA</button></div><div class="hint">På Render/HTTPS öppnas datorns webbkamera direkt.</div><div class="object-list">${state.photos.length?state.photos.map((x,i)=>`<button data-pick-photo="${i}" class="${i===selectedPhoto?'active':''}">FOTO ${i+1}</button>`).join(''):'<span class="hint">Inga foton ännu.</span>'}</div>${photoControls()}`;
  el.innerHTML=s;
  wireControls();
 }
@@ -1560,26 +1645,15 @@ function textControls(fontOnly){
 
  const fonts=[
   'Impact',
-  'Arial Black',
-  'Arial Narrow',
   'Courier New',
   'Georgia',
+  'Arial Black',
+  'Arial Narrow',
   'Times New Roman',
   'Trebuchet MS',
-  'Verdana',
-  'Lucida Console',
-  'Palatino Linotype',
-  'Garamond',
-  'Bookman Old Style',
-  'Century Gothic',
-  'Franklin Gothic Medium',
-  'Brush Script MT',
   'Comic Sans MS',
-  'Copperplate',
-  'Rockwell',
-  'Futura',
-  'Gill Sans',
-  'American Typewriter'
+  'Brush Script MT',
+  'Copperplate'
  ];
 
  return `<h2>VALD TEXT</h2>
@@ -1672,8 +1746,40 @@ if(q('chaosMax'))q('chaosMax').onclick=()=>{
  saveLocal();buildControls();render();
 };
 if(q('importPhotos'))q('importPhotos').onclick=()=>document.getElementById('photoInput').click();
-if(q('camera'))q('camera').onclick=()=>document.getElementById('cameraInput').click();
+if(q('drawPen'))q('drawPen').onclick=()=>{drawTool='pen';buildControls()};
+if(q('drawEraser'))q('drawEraser').onclick=()=>{drawTool='eraser';buildControls()};
+if(q('camera'))q('camera').onclick=openCamera;
 }
+
+async function openCamera(){
+ const ov=document.getElementById('cameraOverlay'),msg=document.getElementById('cameraMsg');
+ ov.classList.add('show');msg.textContent='ÖPPNAR KAMERA…';primeAudio();
+ try{
+  if(!navigator.mediaDevices?.getUserMedia)throw new Error('Kamera-API saknas');
+  cameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false});
+  document.getElementById('cameraVideo').srcObject=cameraStream;msg.textContent='';
+ }catch(e){
+  msg.textContent='KAMERAN BLOCKERADES. Tillåt kamera i webbläsaren eller använd IMPORTERA FOTON.';
+ }
+}
+function closeCamera(){
+ if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null}
+ document.getElementById('cameraVideo').srcObject=null;document.getElementById('cameraOverlay').classList.remove('show');
+}
+function addPhotoData(data,w,h){
+ const im=new Image();im.onload=()=>{
+  const fit=Math.min(450/im.width,500/im.height,1);
+  state.photos.push({src:data,img:im,x:W/2,y:H/2,w:im.width*fit,h:im.height*fit,rot:0,opacity:100,tint:'#ffffff',tintAmount:0,distortX:0,distortY:0,filter:'ingen',filterSize:8});
+  selectedPhoto=state.photos.length-1;saveLocal();buildControls();render();
+ };im.src=data;
+}
+document.getElementById('takePhoto').onclick=()=>{
+ const v=document.getElementById('cameraVideo');if(!v.videoWidth)return;
+ const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;
+ c.getContext('2d').drawImage(v,0,0);addPhotoData(c.toDataURL('image/jpeg',.86),c.width,c.height);closeCamera();
+};
+document.getElementById('closeCamera').onclick=closeCamera;
+
 function addPhotos(files){
  [...files].forEach(file=>{
   if(!file.type.startsWith('image/'))return;
@@ -1716,18 +1822,52 @@ document.getElementById('photoInput').onchange=e=>{addPhotos(e.target.files);e.t
 document.getElementById('cameraInput').onchange=e=>{addPhotos(e.target.files);e.target.value=''};
 
 function point(e){let r=C.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}}
+function eraseAt(p,r=28){
+ const rr=r*r,next=[];
+ for(const st of state.strokes){
+  const pts=st.points||[];let seg=[];
+  for(const q of pts){
+   const hit=(q.x-p.x)*(q.x-p.x)+(q.y-p.y)*(q.y-p.y)<=rr;
+   if(hit){if(seg.length>1)next.push({...st,points:seg});seg=[]}
+   else seg.push(q);
+  }
+  if(seg.length>1)next.push({...st,points:seg});
+ }
+ state.strokes=next;render();
+}
 C.onpointerdown=e=>{if(mode==='draw'){
- drawing=true;let p=point(e);
- activeStroke={points:[p],color:state.draw.color,size:state.draw.size,opacity:state.draw.opacity,seed:1701+Math.floor(Math.random()*100000000)};
- state.strokes.push(activeStroke);C.setPointerCapture(e.pointerId);render()
+ C.setPointerCapture(e.pointerId);let p=point(e);
+ if(drawTool==='eraser'){erasing=true;eraseAt(p);return}
+ drawing=true;activeStroke={points:[p],color:state.draw.color,size:state.draw.size,opacity:state.draw.opacity,seed:1701+Math.floor(Math.random()*100000000)};
+ state.strokes.push(activeStroke);render()
 }};
-C.onpointermove=e=>{if(drawing&&activeStroke){activeStroke.points.push(point(e));render()}};
-C.onpointerup=()=>{if(drawing){drawing=false;activeStroke=null;saveLocal()}};
-C.onpointerleave=()=>{if(drawing){drawing=false;activeStroke=null;saveLocal()}};
+C.onpointermove=e=>{
+ if(mode==='draw'&&erasing){eraseAt(point(e));return}
+ if(drawing&&activeStroke){activeStroke.points.push(point(e));render()}
+};
+C.onpointerup=()=>{if(drawing||erasing){drawing=false;erasing=false;activeStroke=null;saveLocal()}};
+C.onpointerleave=()=>{if(drawing||erasing){drawing=false;erasing=false;activeStroke=null;saveLocal()}};
 
 
+
+
+document.querySelectorAll('[data-chat]').forEach(b=>b.onclick=()=>{primeAudio();if(multiplayerActive())socket.emit('quick-chat',{room:roomCode,phrase:b.dataset.chat})});
+document.getElementById('proposeRoles').onclick=()=>{primeAudio();if(multiplayerActive())socket.emit('propose-role-shuffle',{room:roomCode})};
+document.getElementById('voteYes').onclick=()=>{if(currentVote)socket.emit('role-vote',{room:roomCode,yes:true});document.getElementById('voteOverlay').classList.remove('show')};
+document.getElementById('voteNo').onclick=()=>{if(currentVote)socket.emit('role-vote',{room:roomCode,yes:false});document.getElementById('voteOverlay').classList.remove('show')};
+socket.on('quick-chat',addChat);
+socket.on('role-vote-request',v=>{showVote(v);if(v.by!==mySocketId)voteSound()});
+socket.on('role-vote-state',showVote);
+socket.on('role-vote-cancelled',d=>{showVote(null);const st=document.getElementById('roleVoteStatus');st.textContent=(d?.byName||'NÅGON')+' SA NEJ';setTimeout(()=>st.textContent='',1600)});
+socket.on('roles-shuffled',d=>{
+ showVote(null);updatePresence(d.participants||[]);
+ const me=(d.participants||[]).find(p=>p.id===mySocketId);
+ if(me){assignedRole=me.role;setMode(assignedRole,true)}
+});
+socket.on('activity',d=>{const a=document.getElementById('activity');a.textContent=(d.name||'NÅGON')+' · '+(d.action||'JOBBAR');clearTimeout(a._t);a._t=setTimeout(()=>a.textContent='',1500)});
 
 document.getElementById('createRoom').onclick=()=>{
+ primeAudio();
  if(!socket.connected){lobbyMessage('Väntar på servern…','error');return}
  saveIdentity();
  lobbyMessage('SKAPAR RUM…');
@@ -1738,6 +1878,7 @@ document.getElementById('createRoom').onclick=()=>{
  });
 };
 document.getElementById('joinExisting').onclick=()=>{
+ primeAudio();
  saveIdentity();
  joinRoom(document.getElementById('joinCode').value);
 };
