@@ -140,6 +140,117 @@ input[type=color]{background:#fff;border-color:#bbb}
 #roleChoiceControls select{width:100%}
 #canvas{box-shadow:0 0 0 1px #cfcfcf}
 
+
+/* K/P V2 — offwhite / retro internet */
+:root{
+ --paper:#f1eee3;
+ --paper2:#f7f4eb;
+ --ink:#111111;
+ --quiet:#8b877d;
+ --line:#1a1a1a;
+}
+html,body{background:var(--paper)!important;color:var(--ink)!important}
+body{font-family:"Courier New",monospace!important}
+.app{background:var(--paper)!important;gap:8px!important;padding:8px!important}
+.stage{background:var(--paper)!important;border:0!important}
+.panel{
+ width:248px!important;
+ background:var(--paper)!important;
+ border:1px solid var(--line)!important;
+ padding:9px!important;
+ color:var(--ink)!important;
+}
+#canvas{
+ height:min(98vh,1050px)!important;
+ max-width:100%!important;
+ box-shadow:0 0 0 1px #111!important;
+ background:#fff!important;
+}
+button,select,input[type=text],input[type=number],input[type=color]{
+ border:1px solid #111!important;
+ border-radius:0!important;
+ background:var(--paper2)!important;
+ color:#111!important;
+ box-shadow:none!important;
+ font-family:"Courier New",monospace!important;
+}
+button:hover{background:#111!important;color:var(--paper2)!important}
+input[type=range]{accent-color:#111}
+h1,h2,.small,.row label,.hint,.value,#collectiveStatus,.person{font-family:"Courier New",monospace!important}
+h1{font-size:14px!important;letter-spacing:.03em!important}
+.panel h2{border-top:1px solid #aaa!important;color:#111!important}
+hr{border-top:1px solid #aaa!important}
+#collectiveBox{
+ background:transparent!important;
+ border:0!important;
+ border-top:1px solid #111!important;
+ border-bottom:1px solid #111!important;
+ padding:7px 0!important;
+}
+#presence{display:block!important;margin-top:6px!important}
+.person{
+ display:block!important;
+ border:0!important;
+ padding:2px 0!important;
+ color:var(--quiet)!important;
+ font-size:9px!important;
+ background:transparent!important;
+}
+.person.me{color:#111!important}
+.person.live::before{content:"● ";color:#111}
+.person:not(.live)::before{content:"○ ";color:#aaa}
+#leftChat{
+ width:150px!important;
+ background:var(--paper)!important;
+ color:#111!important;
+ border:1px solid #111!important;
+ box-shadow:none!important;
+}
+.chat-line{color:#555!important;border-bottom:1px dotted #aaa!important}
+#posterView{background:var(--paper2)!important;color:#111!important;border:1px solid #111!important;backdrop-filter:none!important}
+#roleChoice{
+ display:block!important;
+ margin-top:8px!important;
+ padding-top:8px!important;
+ border-top:1px dotted #999!important;
+}
+#roleChoice.hidden{display:block!important}
+#roleChoice .hint{display:block!important;color:#666!important}
+#roleChoiceControls{grid-template-columns:1fr auto!important}
+#simpleRoleName{
+ font-family:"Courier New",monospace!important;
+ font-size:18px!important;
+ font-weight:700!important;
+ color:#111!important;
+ margin-bottom:8px!important;
+}
+#simpleRoleHeader{font-family:"Courier New",monospace!important;color:#777!important}
+#voteOverlay,#cameraOverlay{background:rgba(241,238,227,.94)!important}
+.modal-card{
+ background:var(--paper)!important;
+ color:#111!important;
+ border:1px solid #111!important;
+ box-shadow:none!important;
+}
+#lobby{background:var(--paper)!important}
+.lobby-card{
+ background:var(--paper)!important;
+ color:#111!important;
+ border:1px solid #111!important;
+ box-shadow:none!important;
+}
+.lobby-card p{color:#666!important}
+#serverState{border-color:#aaa!important;color:#555!important}
+#signature{
+ margin-top:10px;
+ padding-top:7px;
+ border-top:1px dotted #999;
+ font:8px/1.4 "Courier New",monospace;
+ color:#777;
+ letter-spacing:.04em;
+}
+body.poster-only .app{background:var(--paper)!important}
+
 </style>
 </head>
 <body>
@@ -149,11 +260,14 @@ input[type=color]{background:#fff;border-color:#bbb}
   <div class="chat-buttons">
     <button data-chat="JAG ÄR NÖJD">NÖJD</button>
     <button data-chat="JAG ÄR INTE NÖJD">INTE NÖJD</button>
-    <button data-chat="SPARA DEN HÄR">SPARA</button>
+    <button data-chat="KÖR">KÖR</button>
     <button data-chat="VÄNTA">VÄNTA</button>
+    <button data-chat="MER">MER</button>
+    <button data-chat="MINDRE">MINDRE</button>
+    <button data-chat="BRA DÄR">BRA DÄR</button>
+    <button data-chat="SPARA DEN HÄR">SPARA</button>
   </div>
   <div id="roleTools">
-    <button id="proposeRoles" style="width:100%">FÖRESLÅ ROLLBYTE</button>
     <div id="roleVoteStatus"></div>
   </div>
 </div>
@@ -161,7 +275,7 @@ input[type=color]{background:#fff;border-color:#bbb}
 <div class="app">
   <main class="stage"><button id="posterView">VISA POSTER</button><canvas id="canvas" width="600" height="900"></canvas></main>
   <aside class="panel">
-    <h1>KOLLEKTIV / POSTER</h1><div class="small">KOLLEKTIV VERSION · SIMPLE V1.5 · VIT WORKSPACE</div>
+    <h1>KOLLEKTIV / POSTER</h1><div class="small">KOLLEKTIV VERSION · K/P V2 · RETRO COLLECTIVE</div>
     <hr>
     <div class="modebar" id="modes">
       <button data-mode="background">BAKGRUND</button><button data-mode="texture">TEXTUR</button><button data-mode="stickers">STICKERS</button>
@@ -172,15 +286,16 @@ input[type=color]{background:#fff;border-color:#bbb}
       <div id="collectiveStatus"><span id="netDot"></span><strong id="roomLabel">SOLO / EJ ANSLUTEN</strong></div>
       <div id="presence"></div>
       <div id="roleChoice" class="hidden">
-        <div class="hint">NI ÄR FÄRRE ÄN 4 · VÄLJ EN LEDIG ROLL</div>
+        <div class="hint">BEGÄR NY ROLL</div>
         <div id="roleChoiceControls">
           <select id="desiredRole"></select>
-          <button id="chooseRole">VÄLJ</button>
+          <button id="chooseRole">BEGÄR</button>
         </div>
       </div>
       <div class="grid" style="margin-top:6px"><button id="copyRoom">KOPIERA RUMSLÄNK</button><button id="leaveRoom">LÄMNA RUM</button></div>
     </div>
     <div id="simpleRoleHeader">DIN ROLL</div><div id="simpleRoleName">—</div><div id="controls"></div>
+    <div id="signature">KOLLEKTIV / POSTER<br>K/P · EGET INTERNETVERKTYG</div>
     <hr>
     <div class="grid"><button id="export">EXPORTERA PNG</button><button id="reset" class="danger">RENSA</button></div>
   </aside>
@@ -189,8 +304,8 @@ input[type=color]{background:#fff;border-color:#bbb}
 
 
 <div id="voteOverlay"><div class="modal-card">
-  <h2>BYTA ROLLER?</h2>
-  <div id="voteText" class="hint">Alla måste godkänna. Ett NEJ avbryter.</div>
+  <h2>ROLLFÖRFRÅGAN</h2>
+  <div id="voteText" class="hint">Övriga spelare måste godkänna. Ett NEJ avbryter.</div>
   <div class="grid" style="margin-top:10px"><button id="voteYes">JA</button><button id="voteNo" class="danger">NEJ</button></div>
 </div></div>
 <div id="cameraOverlay"><div class="modal-card">
@@ -240,7 +355,8 @@ const socket=io({
  timeout:12000
 });
 let roomCode=null,mySocketId=null,applyingRemote=false,syncTimer=null,lastSentJSON='',participants=[];
-let assignedRole=null,currentVote=null,audioCtx=null,cameraStream=null,drawTool='pen',erasing=false;
+let assignedRole=null,currentVote=null,audioCtx=null,cameraStream=null,drawTool='pen',erasing=false,pendingAssignedRole=null;
+const liveUntil=new Map();
 let pendingRoom=(new URLSearchParams(location.search).get('room')||'').trim().toUpperCase();
 let reconnectRoom=sessionStorage.getItem('kollektiv-room')||'';
 
@@ -274,6 +390,20 @@ const ROLE_LABELS={background:'BAKGRUND',texture:'TEXTUR',stickers:'STICKERS',co
 function primeAudio(){try{audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume()}catch(e){}}
 function voteSound(){try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.frequency.setValueAtTime(620,n);o.frequency.setValueAtTime(820,n+.11);g.gain.setValueAtTime(.08,n);g.gain.exponentialRampToValueAtTime(.001,n+.24);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.25)}catch(e){}}
 function myPerson(){return participants.find(p=>p.id===mySocketId)}
+let lastActivitySent=0;
+function markActivity(){
+ if(!multiplayerActive())return;
+ const now=Date.now();
+ if(now-lastActivitySent<300)return;
+ lastActivitySent=now;
+ socket.emit('activity',{room:roomCode});
+}
+function refreshLivePeople(){
+ const now=Date.now();
+ document.querySelectorAll('#presence .person[data-id]').forEach(el=>{
+   el.classList.toggle('live',(liveUntil.get(el.dataset.id)||0)>now);
+ });
+}
 function updateRoleLocks(){
  const me=myPerson();if(me?.role)assignedRole=me.role;
  document.querySelectorAll('#modes button').forEach(b=>{
@@ -289,12 +419,18 @@ function addChat(msg){
  while(f.children.length>10)f.firstChild.remove();
 }
 function showVote(v){
- currentVote=v||null;const ov=document.getElementById('voteOverlay'),st=document.getElementById('roleVoteStatus');
+ currentVote=v||null;
+ const ov=document.getElementById('voteOverlay'),st=document.getElementById('roleVoteStatus');
  if(!v){ov.classList.remove('show');st.textContent='';return}
+
  st.textContent=`${v.yes}/${v.total} HAR GODKÄNT`;
  const voted=(v.voters||[]).includes(mySocketId);
- document.getElementById('voteText').textContent=`${v.byName||'NÅGON'} VILL BYTA ROLLER · ${v.yes}/${v.total} JA`;
- ov.classList.toggle('show',!voted);
+ const amRequester=v.by===mySocketId;
+ const roleName=ROLE_LABELS[v.role]||v.role||'ROLL';
+ let text=`${v.byName||'NÅGON'} VILL HA ${roleName}`;
+ if(v.targetName)text+=` · BYTER MED ${v.targetName}`;
+ document.getElementById('voteText').textContent=text+` · ${v.yes}/${v.total} JA`;
+ ov.classList.toggle('show',!amRequester&&!voted);
 }
 
 function scheduleRoomSync(){
@@ -310,14 +446,17 @@ function scheduleRoomSync(){
 function updateRoleChoice(){
  const box=document.getElementById('roleChoice'),sel=document.getElementById('desiredRole');
  if(!box||!sel)return;
- const allowed=multiplayerActive() && participants.length>0 && participants.length<4;
+ const allowed=multiplayerActive() && participants.length>0;
  box.classList.toggle('hidden',!allowed);
  if(!allowed)return;
 
- const used=new Set(participants.filter(p=>p.id!==mySocketId).map(p=>p.role));
- const options=Object.keys(ROLE_LABELS).filter(role=>!used.has(role));
- sel.innerHTML=options.map(role=>`<option value="${role}">${esc(ROLE_LABELS[role])}</option>`).join('');
- if(options.includes(assignedRole))sel.value=assignedRole;
+ const ownerByRole=new Map(participants.map(p=>[p.role,p]));
+ const options=Object.keys(ROLE_LABELS).filter(role=>role!==assignedRole);
+ sel.innerHTML=options.map(role=>{
+   const owner=ownerByRole.get(role);
+   const suffix=owner&&owner.id!==mySocketId?` ↔ ${esc(owner.name||'NÅGON')}`:' · LEDIG';
+   return `<option value="${role}">${esc(ROLE_LABELS[role])}${suffix}</option>`;
+ }).join('');
 }
 function updatePresence(list=[]){
  participants=list;
@@ -326,7 +465,7 @@ function updatePresence(list=[]){
  if(me?.role)assignedRole=me.role;
 
  const el=document.getElementById('presence');
- if(el)el.innerHTML=list.map(p=>`<span class="person ${p.id===mySocketId?'me':''}">${esc(p.name||'ANONYM')} · ${esc(ROLE_LABELS[p.role]||p.role||'—')}</span>`).join('');
+ if(el)el.innerHTML=list.map(p=>`<span data-id="${esc(p.id)}" class="person ${p.id===mySocketId?'me':''} ${(liveUntil.get(p.id)||0)>Date.now()?'live':''}">${esc(p.name||'ANONYM')} / ${esc(ROLE_LABELS[p.role]||p.role||'—')}</span>`).join('');
 
  updateRoleLocks();
  updateRoleChoice();
@@ -417,7 +556,8 @@ function serializableState(){
  return JSON.parse(JSON.stringify(state,(k,v)=>k==='img'?undefined:v));
 }
 function saveLocal(){
- // Multiplayer-rummet är sanningskällan; klienten sparar ingen gammal poster lokalt.
+ // Multiplayer-rummet är sanningskällan. Full-state finns kvar som fallback för äldre verktyg.
+ markActivity();
  scheduleRoomSync();
 }
 function normalizeState(){
@@ -1792,7 +1932,15 @@ if(q('fontFamily')){
   };
  }
 }
- if(q('textValue'))q('textValue').oninput=()=>{state.texts[selectedText].text=q('textValue').value;saveLocal();render()};
+ if(q('textValue'))q('textValue').oninput=()=>{
+   const o=state.texts[selectedText];
+   if(!o)return;
+   o.text=q('textValue').value;
+   markActivity();
+   if(multiplayerActive())socket.emit('text-op',{room:roomCode,index:selectedText,fields:{text:o.text}});
+   else saveLocal();
+   render();
+ };
  if(q('delText'))q('delText').onclick=()=>{state.texts.splice(selectedText,1);selectedText=-1;saveLocal();buildControls();render()};
 if(q('photoFilter')){
  q('photoFilter').value=state.photos[selectedPhoto]?.filter||'ingen';
@@ -1909,46 +2057,78 @@ function eraseAt(p,r=28){
 }
 C.onpointerdown=e=>{if(mode==='draw'){
  C.setPointerCapture(e.pointerId);let p=point(e);
+ markActivity();
  if(drawTool==='eraser'){erasing=true;eraseAt(p);return}
- drawing=true;activeStroke={points:[p],color:state.draw.color,size:state.draw.size,opacity:state.draw.opacity,seed:1701+Math.floor(Math.random()*100000000)};
+ drawing=true;
+ activeStroke={points:[p],color:state.draw.color,size:state.draw.size,opacity:state.draw.opacity,seed:1701+Math.floor(Math.random()*100000000)};
  state.strokes.push(activeStroke);render()
 }};
 C.onpointermove=e=>{
- if(mode==='draw'&&erasing){eraseAt(point(e));return}
- if(drawing&&activeStroke){activeStroke.points.push(point(e));render()}
+ if(mode==='draw'&&erasing){markActivity();eraseAt(point(e));return}
+ if(drawing&&activeStroke){markActivity();activeStroke.points.push(point(e));render()}
 };
-C.onpointerup=()=>{if(drawing||erasing){drawing=false;erasing=false;activeStroke=null;saveLocal()}};
-C.onpointerleave=()=>{if(drawing||erasing){drawing=false;erasing=false;activeStroke=null;saveLocal()}};
+function finishDrawingGesture(){
+ if(!(drawing||erasing))return;
+ const finished=activeStroke;
+ const wasErasing=erasing;
+ drawing=false;erasing=false;activeStroke=null;
+ if(multiplayerActive()){
+   if(wasErasing)socket.emit('strokes-replace',{room:roomCode,strokes:state.strokes});
+   else if(finished)socket.emit('stroke-add',{room:roomCode,stroke:finished});
+ }else saveLocal();
+ if(pendingAssignedRole){const r=pendingAssignedRole;pendingAssignedRole=null;applyMyRole(r)}
+}
+C.onpointerup=finishDrawingGesture;
+C.onpointerleave=finishDrawingGesture;
 
 
 
 
 document.querySelectorAll('[data-chat]').forEach(b=>b.onclick=()=>{primeAudio();if(multiplayerActive())socket.emit('quick-chat',{room:roomCode,phrase:b.dataset.chat})});
-document.getElementById('proposeRoles').onclick=()=>{primeAudio();if(multiplayerActive())socket.emit('propose-role-shuffle',{room:roomCode})};
-document.getElementById('voteYes').onclick=()=>{if(currentVote)socket.emit('role-vote',{room:roomCode,yes:true});document.getElementById('voteOverlay').classList.remove('show')};
-document.getElementById('voteNo').onclick=()=>{if(currentVote)socket.emit('role-vote',{room:roomCode,yes:false});document.getElementById('voteOverlay').classList.remove('show')};
+document.getElementById('voteYes').onclick=()=>{
+ if(currentVote)socket.emit('role-request-vote',{room:roomCode,yes:true});
+ document.getElementById('voteOverlay').classList.remove('show');
+};
+document.getElementById('voteNo').onclick=()=>{
+ if(currentVote)socket.emit('role-request-vote',{room:roomCode,yes:false});
+ document.getElementById('voteOverlay').classList.remove('show');
+};
 socket.on('quick-chat',addChat);
-socket.on('role-vote-request',v=>{showVote(v);if(v.by!==mySocketId)voteSound()});
-socket.on('role-vote-state',showVote);
-socket.on('role-vote-cancelled',d=>{showVote(null);const st=document.getElementById('roleVoteStatus');st.textContent=(d?.byName||'NÅGON')+' SA NEJ';setTimeout(()=>st.textContent='',1600)});
-socket.on('roles-shuffled',d=>{
- showVote(null);updatePresence(d.participants||[]);
+socket.on('role-request',v=>{showVote(v);if(v.by!==mySocketId)voteSound()});
+socket.on('role-request-state',showVote);
+socket.on('role-request-cancelled',d=>{
+ showVote(null);
+ const st=document.getElementById('roleVoteStatus');
+ st.textContent=(d?.byName||'NÅGON')+' SA NEJ';
+ setTimeout(()=>st.textContent='',1600);
+});
+function applyMyRole(role){
+ if(!role)return;
+ if(drawing||erasing){pendingAssignedRole=role;return}
+ assignedRole=role;
+ setMode(role,true);
+ updateRoleChoice();
+}
+socket.on('role-change-complete',d=>{
+ showVote(null);
+ updatePresence(d.participants||[]);
  const me=(d.participants||[]).find(p=>p.id===mySocketId);
- if(me){assignedRole=me.role;setMode(assignedRole,true)}
+ if(me)applyMyRole(me.role);
 });
 
 document.getElementById('chooseRole').onclick=()=>{
- if(!multiplayerActive()||participants.length>=4)return;
+ if(!multiplayerActive())return;
  const role=document.getElementById('desiredRole').value;
- socket.timeout(6000).emit('choose-role',{room:roomCode,role},(err,res)=>{
+ if(!role||role===assignedRole)return;
+ primeAudio();
+ socket.timeout(6000).emit('request-role',{room:roomCode,role},(err,res)=>{
    if(err||!res?.ok){
      const st=document.getElementById('roleVoteStatus');
-     st.textContent=res?.error||'KUNDE INTE BYTA ROLL';
+     st.textContent=res?.error||'KUNDE INTE BEGÄRA ROLL';
      setTimeout(()=>st.textContent='',1800);
      return;
    }
-   assignedRole=res.role;
-   setMode(assignedRole,true);
+   if(res.direct && res.role)applyMyRole(res.role);
  });
 };
 
@@ -2032,15 +2212,41 @@ socket.on('disconnect',()=>{
 socket.on('presence',list=>{updatePresence(list);setRoomUI()});
 socket.on('room-state',payload=>{
  if(!payload?.state||payload.room!==roomCode)return;
+ const active=document.activeElement;
+ const typing=active?.id==='textValue' && mode==='copy' && selectedText>=0;
+ const localText=typing?state.texts[selectedText]?.text:null;
+
  applyingRemote=true;
  Object.assign(state,payload.state);
  normalizeState();
  hydratePhotos();
+ if(typing && state.texts[selectedText] && localText!=null)state.texts[selectedText].text=localText;
  lastSentJSON=JSON.stringify(serializableState());
  applyingRemote=false;
- buildControls();
+
+ if(!typing)buildControls();
  render();
 });
+socket.on('state-op',op=>{
+ if(!op||op.room!==roomCode)return;
+ applyingRemote=true;
+ if(op.type==='text' && state.texts[op.index]){
+   Object.assign(state.texts[op.index],op.fields||{});
+ }else if(op.type==='stroke-add' && op.stroke){
+   state.strokes.push(op.stroke);
+ }else if(op.type==='strokes-replace' && Array.isArray(op.strokes)){
+   state.strokes=op.strokes;
+ }
+ applyingRemote=false;
+ render();
+});
+socket.on('activity',d=>{
+ if(!d?.id||d.id===mySocketId)return;
+ liveUntil.set(d.id,Date.now()+2200);
+ refreshLivePeople();
+ setTimeout(refreshLivePeople,2300);
+});
+
 socket.on('room-closed',()=>{
  roomCode=null;
  sessionStorage.removeItem('kollektiv-room');
@@ -2084,7 +2290,7 @@ function offerPngDownload(dataUrl){
      <div style="font-weight:800;margin-bottom:10px">PNG ÄR KLAR</div>
      <img id="pngPreview" alt="PNG preview" style="display:block;width:100%;max-height:65vh;object-fit:contain;background:#fff;margin-bottom:12px">
      <div style="display:flex;gap:8px">
-       <a id="pngRealDownload" download="kollektiv-poster.png" style="flex:1;text-align:center;padding:12px;background:#fff;color:#111;text-decoration:none;font-weight:800">LADDA NER PNG</a>
+       <a id="pngRealDownload" download="KOLLEKTIV_POSTER.png" style="flex:1;text-align:center;padding:12px;background:#fff;color:#111;text-decoration:none;font-weight:800">LADDA NER PNG</a>
        <button id="pngClose" style="padding:12px;border:1px solid #777;background:#222;color:#fff">STÄNG</button>
      </div>
    </div>`;
@@ -2101,7 +2307,8 @@ document.getElementById('export').onclick=()=>{
    const dataUrl=C.toDataURL('image/png');
    const a=document.createElement('a');
    a.href=dataUrl;
-   a.download='kollektiv-poster.png';
+   const stamp=new Date().toISOString().slice(0,10);
+   a.download=`KOLLEKTIV_${roomCode||'SOLO'}_${stamp}.png`;
    a.style.display='none';
    document.body.appendChild(a);
    a.click();

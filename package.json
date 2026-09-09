@@ -1,6 +1,6 @@
 {
-  "name": "kollektiv-poster-simple-v1-5",
-  "version": "4.4.0",
+  "name": "kollektiv-poster-kp-v2",
+  "version": "5.0.0",
   "private": true,
   "description": "KOLLEKTIV / POSTER collaborative poster tool",
   "main": "server.js",

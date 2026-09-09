@@ -1,11 +1,27 @@
-# KOLLEKTIV / POSTER — SIMPLE V1.5
+# KOLLEKTIV / POSTER — K/P V2
 
-- Vit workspace och ljust gränssnitt.
-- När ni är 1–3 personer kan varje person välja bland lediga roller.
-- Vid 4 eller fler personer göms rollväljaren.
-- TEXTUR har sex grafiska alternativ: PRICKAR, LINJER, RUTNÄT, DIAGONAL, SCHACK, XEROX.
-- Blank poster/reset och multiplayer-logiken från V1.4 är kvar.
+Fokus i den här versionen:
+- Offwhite, handbyggd retro-internet-identitet.
+- Större poster och smalare kontrollpanel.
+- Deltagarlista är nedtonad, med diskret ● när någon arbetar.
+- Fler fasta chattfraser.
+- Nytt rollsystem:
+  - välj vilken roll du vill begära, oavsett antal spelare;
+  - om rollen är ledig får du den efter att övriga godkänt;
+  - om rollen är upptagen byter du roll med den personen efter att övriga godkänt;
+  - ett NEJ avbryter;
+  - den som begär behöver inte rösta;
+  - i ett enpersonsrum sker bytet direkt;
+  - om någon ritar färdigt genomförs det lokala rollbytet först efter avslutat drag.
+- Ett kort WebAudio-pling spelas hos de andra när en rollförfrågan kommer.
+- Exportnamn innehåller rumskod och datum.
+- Textfältet tappar inte längre fokus när andra skickar state-uppdateringar.
+- Första steget mot operationsbaserad multiplayer:
+  - textinmatning synkas som små `text-op`;
+  - nya ritdrag synkas som `stroke-add`;
+  - suddning synkas som `strokes-replace`;
+  - full-state finns kvar som fallback för övriga verktyg.
 
-Kör:
+Deploy:
 npm install
 npm start
