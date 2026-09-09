@@ -218,10 +218,22 @@ io.on('connection',socket=>{
   if(q.yes.size===q.required.size)finishFormatVote(c,r);
   else io.to(c).emit('format-vote-state',formatVotePayload(r));
  });
+ socket.on('tool-op',({room,bucket,fields}={})=>{
+  const c=cleanRoom(room),r=rooms.get(c),p=r?.people.get(socket.id);if(socket.data.room!==c||!r||!p)return;
+  const allowed={background:'bg',texture:'texture',draw:'draw',paint:'paint',chaos:'chaos'}[p.role];
+  if(bucket!==allowed||!r.state[bucket]||typeof fields!=='object')return;
+  const clean=safe(fields);Object.assign(r.state[bucket],clean);r.updated=Date.now();socket.to(c).emit('state-op',{room:c,type:'tool',bucket,fields:clean});
+ });
+ socket.on('object-op',({room,bucket,index,fields}={})=>{
+  const c=cleanRoom(room),r=rooms.get(c),p=r?.people.get(socket.id);if(socket.data.room!==c||!r||!p)return;
+  const allowed={stickers:'stickers',photo:'photos',copy:'texts',font:'texts'}[p.role];
+  index=Number(index);if(bucket!==allowed||!Array.isArray(r.state[bucket])||!Number.isInteger(index)||!r.state[bucket][index]||typeof fields!=='object')return;
+  const clean=safe(fields);Object.assign(r.state[bucket][index],clean);r.updated=Date.now();socket.to(c).emit('state-op',{room:c,type:'object',bucket,index,fields:clean});
+ });
  socket.on('activity',({room}={})=>{
   const c=cleanRoom(room),r=rooms.get(c);
   if(socket.data.room!==c||!r||!r.people.has(socket.id))return;
-  socket.to(c).emit('activity',{id:socket.id});
+  socket.to(c).emit('activity',{id:socket.id,role:r.people.get(socket.id)?.role});
  });
  socket.on('text-op',({room,index,fields}={})=>{
   const c=cleanRoom(room),r=rooms.get(c),p=r?.people.get(socket.id);
@@ -249,8 +261,8 @@ io.on('connection',socket=>{
  });
  socket.on('state-update',({room,state}={})=>{let c=cleanRoom(room),r=rooms.get(c);if(socket.data.room!==c||!r)return;let p=r.people.get(socket.id),n=safe(state);if(!p||!n)return;r.state=mergeByRole(r.state,n,p.role);r.updated=Date.now();socket.to(c).emit('room-state',{room:c,state:r.state,by:socket.id})});
  socket.on('reset-room',({room}={})=>{let c=cleanRoom(room),r=rooms.get(c);if(socket.data.room!==c||!r)return;const f=r.state.format||{size:'A4',orientation:'portrait'};r.state=blankRoomState();r.state.format=f;r.updated=Date.now();io.to(c).emit('room-state',{room:c,state:r.state,by:socket.id,reset:true})});
- socket.on('quick-chat',({room,phrase}={})=>{let c=cleanRoom(room),r=rooms.get(c);phrase=String(phrase||'').toUpperCase();if(socket.data.room!==c||!r||!PHRASES.has(phrase))return;let p=r.people.get(socket.id);io.to(c).emit('quick-chat',{name:p.name,phrase})});
+ socket.on('quick-chat',({room,phrase}={})=>{let c=cleanRoom(room),r=rooms.get(c);phrase=String(phrase||'').toUpperCase();if(socket.data.room!==c||!r||!PHRASES.has(phrase))return;let p=r.people.get(socket.id);io.to(c).emit('quick-chat',{id:socket.id,name:p.name,phrase,at:Date.now()})});
  socket.on('leave-room',()=>leave(socket));socket.on('disconnect',()=>leave(socket));
 });
 setInterval(()=>{let n=Date.now();for(let[c,r]of rooms)if(!r.people.size&&n-r.updated>6*60*60*1000)rooms.delete(c)},60000).unref();
-server.listen(Number(process.env.PORT||3000),'0.0.0.0',()=>console.log('KOLLEKTIV / POSTER K/P V2.1'));
+server.listen(Number(process.env.PORT||3000),'0.0.0.0',()=>console.log('KOLLEKTIV / POSTER K/P V2.2'));

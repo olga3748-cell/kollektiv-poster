@@ -311,6 +311,21 @@ html,body,button,select,input,textarea,.panel,#leftChat{
  .app{padding-left:8px!important}
 }
 
+
+/* K/P V2.2 — Arial workstation */
+html,body,body *,button,select,input,textarea,.panel,#leftChat,h1,h2,h3,.small,.row label,.hint,.value,#collectiveStatus,.person,#simpleRoleHeader,#simpleRoleName,#signature{font-family:Arial,Helvetica,sans-serif!important}
+body{font-family:Arial,Helvetica,sans-serif!important;padding-bottom:20px!important}
+.app{grid-template-columns:minmax(0,1fr) 218px!important;gap:7px!important;padding-left:220px!important}
+.panel{width:218px!important;padding:8px!important}
+#leftChat{width:204px!important;bottom:28px!important}
+#canvas{height:min(99vh,1120px)!important}
+#leftChat h1{font-size:17px!important;font-weight:900!important;letter-spacing:-.03em!important}
+.left-section h3{font-size:9px!important;letter-spacing:.12em!important}
+.person{font-size:10px!important}.chat-line{font-size:11px!important;line-height:1.45!important}.chat-name{font-weight:800}.chat-time{color:#888;font-size:9px;margin-right:4px}
+button{font-weight:700}button.active{background:#111!important;color:var(--paper2)!important}
+#systemBar{position:fixed;left:0;right:0;bottom:0;z-index:8500;height:20px;padding:3px 7px;box-sizing:border-box;background:#111;color:#f1eee3;border-top:1px solid #111;font:9px/13px Arial,Helvetica,sans-serif!important;letter-spacing:.04em;white-space:nowrap;overflow:hidden}
+@media(max-width:1050px){.app{padding-left:8px!important;grid-template-columns:minmax(0,1fr) 218px!important}#leftChat{width:auto!important}}
+
 </style>
 </head>
 <body>
@@ -485,6 +500,13 @@ function setServerState(kind,text){
 const ROLE_LABELS={background:'BAKGRUND',texture:'TEXTUR',stickers:'STICKERS',copy:'COPYWRITER',font:'TYPSNITT',draw:'TECKNA',paint:'PAINTBRUSH',chaos:'CHAOS',photo:'FOTOGRAF'};
 function primeAudio(){try{audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume()}catch(e){}}
 function voteSound(){try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.frequency.setValueAtTime(620,n);o.frequency.setValueAtTime(820,n+.11);g.gain.setValueAtTime(.08,n);g.gain.exponentialRampToValueAtTime(.001,n+.24);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.25)}catch(e){}}
+function chatSound(){try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.type='sine';o.frequency.setValueAtTime(720,n);g.gain.setValueAtTime(.025,n);g.gain.exponentialRampToValueAtTime(.001,n+.055);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.06)}catch(e){}}
+
+function updateSystemBar(){
+ const el=document.getElementById('systemBar');if(!el)return;
+ const f=state.format||{size:'A4',orientation:'portrait'},ori=f.orientation==='landscape'?'LANDSKAP':'PORTRÄTT';
+ el.textContent=`RUM ${roomCode||'—'} · ${participants.length||0} ONLINE · ${f.size||'A4'} ${ori} · ${socket.connected?'SYNK OK':'SYNK —'}`;
+}
 function myPerson(){return participants.find(p=>p.id===mySocketId)}
 let lastActivitySent=0;
 function markActivity(){
@@ -497,9 +519,12 @@ function markActivity(){
 function refreshLivePeople(){
  const now=Date.now();
  document.querySelectorAll('#presence .person[data-id]').forEach(el=>{
-   el.classList.toggle('live',(liveUntil.get(el.dataset.id)||0)>now);
+   const live=(liveUntil.get(el.dataset.id)||0)>now;el.classList.toggle('live',live);
+   const p=participants.find(x=>x.id===el.dataset.id);
+   if(p){const base=`${esc(p.name||'ANONYM')} / ${esc(ROLE_LABELS[p.role]||p.role||'—')}`;el.innerHTML=live?`${base} / ${activityWord(p.role)}`:base}
  });
 }
+function activityWord(role){return ({draw:'RITAR…',copy:'SKRIVER…',font:'JUSTERAR TEXT…',texture:'JUSTERAR TEXTUR…',background:'JUSTERAR BAKGRUND…',stickers:'PLACERAR…',paint:'FORMAR DRAG…',chaos:'FÖRVRÄNGER…',photo:'JUSTERAR FOTO…'})[role]||'JOBBAR…'}
 function updateRoleLocks(){
  const me=myPerson();if(me?.role)assignedRole=me.role;
  document.querySelectorAll('#modes button').forEach(b=>{
@@ -510,9 +535,11 @@ function updateRoleLocks(){
 function addChat(msg){
  const f=document.getElementById('chatFeed');if(!f)return;
  const d=document.createElement('div');d.className='chat-line';
- const b=document.createElement('b');b.textContent=(msg.name||'ANONYM')+' · ';
- d.append(b,document.createTextNode(msg.phrase||''));f.appendChild(d);f.scrollTop=f.scrollHeight;
- while(f.children.length>10)f.firstChild.remove();
+ const t=new Date(msg.at||Date.now()).toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});
+ d.innerHTML=`<span class="chat-time">${esc(t)}</span><span class="chat-name">${esc(msg.name||'ANONYM')}</span>: ${esc(msg.phrase||'')}`;
+ f.appendChild(d);f.scrollTop=f.scrollHeight;
+ while(f.children.length>30)f.firstChild.remove();
+ if(msg.id&&msg.id!==mySocketId)chatSound();
 }
 function showVote(v){
  currentVote=v||null;
@@ -537,7 +564,7 @@ function scheduleRoomSync(){
    if(json===lastSentJSON)return;
    lastSentJSON=json;
    socket.emit('state-update',{room:roomCode,state:payload,role:assignedRole||mode});
- },55);
+ },220);
 }
 function updateRoleChoice(){
  const box=document.getElementById('roleChoice'),sel=document.getElementById('desiredRole');
@@ -669,6 +696,7 @@ function applyCanvasFormat(){
  const ps=document.getElementById('paperSize'),po=document.getElementById('paperOrientation');
  if(ps)ps.value=state.format?.size||'A4';
  if(po)po.value=state.format?.orientation||'portrait';
+ if(typeof updateSystemBar==='function')updateSystemBar();
 }
 function serializableState(){
  return JSON.parse(JSON.stringify(state,(k,v)=>k==='img'?undefined:v));
@@ -1920,7 +1948,7 @@ ${colorRow('FÄRG',state.draw,'color')}
 <div class="hint" id="materialNote">${mats[state.paint.material]?.note||''}</div>
 ${slider('GRUNDSTORLEK',state.paint,'size',2,110)}
 ${slider('OPACITET',state.paint,'opacity',0,100)}
-${colorRow('FÄRG',state.paint,'color')}
+
 ${slider('ORGANISK',state.paint,'organic',0,100)}
 ${slider('SVÄLLER',state.paint,'swell',0,100)}
 ${slider('SNURR',state.paint,'twist',0,100)}
@@ -2006,10 +2034,19 @@ function textControls(fontOnly){
    </select></div>`;
 }
 function esc(x){return String(x||'').replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;')}
+function emitSmallControlOp(key,value){
+ if(!multiplayerActive())return false;
+ let bucket=null,index=null;
+ if(mode==='background')bucket='bg';else if(mode==='texture')bucket='texture';else if(mode==='paint')bucket='paint';else if(mode==='chaos')bucket='chaos';else if(mode==='draw')bucket='draw';
+ else if(mode==='stickers'){bucket='stickers';index=selectedSticker}else if(mode==='photo'){bucket='photos';index=selectedPhoto}else if(mode==='copy'||mode==='font'){bucket='texts';index=selectedText}
+ if(!bucket)return false;const fields={[key]:value};
+ if(index==null)socket.emit('tool-op',{room:roomCode,bucket,fields});else socket.emit('object-op',{room:roomCode,bucket,index,fields});
+ markActivity();return true;
+}
 function wireControls(){
  const el=document.getElementById('controls');
- el.querySelectorAll('input[type=color]').forEach(i=>i.oninput=()=>{let obj=mode==='background'?state.bg:mode==='texture'?state.texture:mode==='stickers'?state.stickers[selectedSticker]:mode==='draw'?state.draw:mode==='paint'?state.paint:mode==='copy'||mode==='font'?state.texts[selectedText]:state.photos[selectedPhoto];if(obj)obj[i.dataset.k]=i.value;saveLocal();render()});
- el.querySelectorAll('input[type=range]').forEach(i=>i.oninput=()=>{let obj=mode==='background'?state.bg:mode==='texture'?state.texture:mode==='stickers'?state.stickers[selectedSticker]:mode==='draw'?state.draw:mode==='paint'?state.paint:mode==='copy'||mode==='font'?state.texts[selectedText]:mode==='photo'?state.photos[selectedPhoto]:state.chaos;if(obj){obj[i.dataset.k]=+i.value;i.nextElementSibling.textContent=fmtValue(i.value,i.step);saveLocal();render()}});
+ el.querySelectorAll('input[type=color]').forEach(i=>i.oninput=()=>{let obj=mode==='background'?state.bg:mode==='texture'?state.texture:mode==='stickers'?state.stickers[selectedSticker]:mode==='draw'?state.draw:mode==='paint'?state.paint:mode==='copy'||mode==='font'?state.texts[selectedText]:state.photos[selectedPhoto];if(obj){obj[i.dataset.k]=i.value;if(!emitSmallControlOp(i.dataset.k,i.value))saveLocal();render()}});
+ el.querySelectorAll('input[type=range]').forEach(i=>i.oninput=()=>{let obj=mode==='background'?state.bg:mode==='texture'?state.texture:mode==='stickers'?state.stickers[selectedSticker]:mode==='draw'?state.draw:mode==='paint'?state.paint:mode==='copy'||mode==='font'?state.texts[selectedText]:mode==='photo'?state.photos[selectedPhoto]:state.chaos;if(obj){const v=+i.value;obj[i.dataset.k]=v;i.nextElementSibling.textContent=fmtValue(i.value,i.step);if(!emitSmallControlOp(i.dataset.k,v))saveLocal();render()}});
  const q=id=>document.getElementById(id);
  el.querySelectorAll('[data-pick-sticker]').forEach(b=>b.onclick=()=>{selectedSticker=+b.dataset.pickSticker;buildControls();render()});
  el.querySelectorAll('[data-pick-text]').forEach(b=>b.onclick=()=>{selectedText=+b.dataset.pickText;buildControls();render()});
@@ -2288,6 +2325,7 @@ function applyMyRole(role){
  assignedRole=role;
  setMode(role,true);
  updateRoleChoice();
+ updateSystemBar();
 }
 socket.on('role-change-complete',d=>{
  showVote(null);
@@ -2409,17 +2447,13 @@ socket.on('room-state',payload=>{
  render();
 });
 socket.on('state-op',op=>{
- if(!op||op.room!==roomCode)return;
- applyingRemote=true;
- if(op.type==='text' && state.texts[op.index]){
-   Object.assign(state.texts[op.index],op.fields||{});
- }else if(op.type==='stroke-add' && op.stroke){
-   state.strokes.push(op.stroke);
- }else if(op.type==='strokes-replace' && Array.isArray(op.strokes)){
-   state.strokes=op.strokes;
- }
- applyingRemote=false;
- render();
+ if(!op||op.room!==roomCode)return;applyingRemote=true;
+ if(op.type==='text'&&state.texts[op.index])Object.assign(state.texts[op.index],op.fields||{});
+ else if(op.type==='stroke-add'&&op.stroke)state.strokes.push(op.stroke);
+ else if(op.type==='strokes-replace'&&Array.isArray(op.strokes))state.strokes=op.strokes;
+ else if(op.type==='tool'&&op.bucket&&state[op.bucket])Object.assign(state[op.bucket],op.fields||{});
+ else if(op.type==='object'&&op.bucket&&Array.isArray(state[op.bucket])&&state[op.bucket][op.index])Object.assign(state[op.bucket][op.index],op.fields||{});
+ applyingRemote=false;render();
 });
 socket.on('activity',d=>{
  if(!d?.id||d.id===mySocketId)return;
@@ -2507,5 +2541,6 @@ document.getElementById('export').onclick=()=>{
 };
 setMode('paint');
 </script>
+<div id="systemBar">RUM — · 0 ONLINE · A4 PORTRÄTT · SYNK —</div>
 </body>
 </html>
