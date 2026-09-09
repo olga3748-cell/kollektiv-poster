@@ -87,8 +87,8 @@ body.poster-only #posterView{position:fixed;right:14px;top:14px}
 #roleVoteStatus{font-size:9px;color:#bbb;margin-top:4px;min-height:13px}
 #modes button.locked{opacity:.18;cursor:not-allowed}
 #modes button.my-role{opacity:1;border-color:var(--role);box-shadow:inset 0 -2px 0 var(--role)}
-#voteOverlay,#cameraOverlay{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9000;display:none;place-items:center}
-#voteOverlay.show,#cameraOverlay.show{display:grid}
+#voteOverlay,#formatVoteOverlay,#cameraOverlay{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9000;display:none;place-items:center}
+#voteOverlay.show,#formatVoteOverlay.show,#cameraOverlay.show{display:grid}
 .modal-card{width:min(480px,92vw);background:#101010;border:1px solid #777;padding:16px}
 .modal-card h2{margin:0 0 8px}
 #cameraVideo{width:100%;max-height:65vh;background:#000;object-fit:contain;margin:8px 0}
@@ -128,7 +128,7 @@ input[type=color]{background:#fff;border-color:#bbb}
 #leftChat{background:#fff;border-color:#d8d8d8;color:#111}
 .chat-line{border-bottom-color:#eee;color:#333}
 #posterView{background:#fff;border-color:#aaa;color:#111;backdrop-filter:none}
-#voteOverlay,#cameraOverlay{background:rgba(255,255,255,.9)}
+#voteOverlay,#formatVoteOverlay,#cameraOverlay{background:rgba(255,255,255,.9)}
 .modal-card{background:#fff!important;color:#111!important;border-color:#aaa!important;box-shadow:0 20px 60px rgba(0,0,0,.18)}
 #lobby{background:#f6f6f6}
 .lobby-card{background:#fff;color:#111;border-color:#cfcfcf;box-shadow:0 25px 70px rgba(0,0,0,.15)}
@@ -225,7 +225,7 @@ hr{border-top:1px solid #aaa!important}
  margin-bottom:8px!important;
 }
 #simpleRoleHeader{font-family:"Courier New",monospace!important;color:#777!important}
-#voteOverlay,#cameraOverlay{background:rgba(241,238,227,.94)!important}
+#voteOverlay,#formatVoteOverlay,#cameraOverlay{background:rgba(241,238,227,.94)!important}
 .modal-card{
  background:var(--paper)!important;
  color:#111!important;
@@ -251,51 +251,139 @@ hr{border-top:1px solid #aaa!important}
 }
 body.poster-only .app{background:var(--paper)!important}
 
+
+/* K/P V2.1 — Helvetica + tydligare vänsterspalt */
+html,body,button,select,input,textarea,.panel,#leftChat{
+ font-family:Helvetica,Arial,sans-serif!important;
+}
+.room-code{font-family:"Courier New",monospace!important}
+#leftChat{
+ width:198px!important;
+ max-height:calc(100vh - 16px);
+ overflow:auto;
+ padding:10px!important;
+}
+#leftChat h1{font-size:15px!important;margin:0 0 2px}
+#leftChat .small{font-size:9px!important;color:#777!important}
+.left-section{border-top:1px solid #111;margin-top:9px;padding-top:8px}
+.left-section h3{font-size:10px;letter-spacing:.08em;margin:0 0 6px}
+#chatFeed{
+ height:126px!important;
+ background:var(--paper2)!important;
+ border:1px solid #111!important;
+ padding:5px!important;
+ margin:5px 0 7px!important;
+ overflow:auto;
+}
+.chat-line{
+ color:#111!important;
+ font-size:11px!important;
+ line-height:1.35!important;
+ padding:4px 1px!important;
+ border-bottom:1px dotted #999!important;
+}
+.chat-buttons{display:grid!important;grid-template-columns:1fr 1fr!important;gap:4px!important}
+.chat-buttons button{font-size:10px!important;padding:5px 3px!important}
+#collectiveBox{border:0!important;padding:0!important;margin:0!important}
+#formatControls{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+#formatControls select{width:100%;font-size:10px}
+#requestFormat{grid-column:1/-1;width:100%}
+#formatStatus{font-size:9px;color:#666;margin-top:5px;min-height:12px}
+.app{padding-left:214px!important}
+.panel{width:232px!important}
+#simpleRoleHeader{margin-top:0!important}
+#controls .reset-slider{
+ display:inline-block!important;
+ width:24px!important;
+ height:24px!important;
+ min-width:24px!important;
+ padding:0!important;
+ font-size:12px!important;
+ background:var(--paper2)!important;
+ color:#111!important;
+ border:1px solid #111!important;
+}
+#controls .slider-row{gap:5px!important}
+#controls .slider-row input[type=range]{min-width:0}
+#resetVisibleSliders{width:100%;margin-top:9px;font-size:9px!important;letter-spacing:.04em}
+@media(max-width:1050px){
+ #leftChat{position:static!important;width:auto!important;max-height:none!important;margin:8px!important}
+ .app{padding-left:8px!important}
+}
+
 </style>
 </head>
 <body>
 <div id="leftChat">
-  <h3>KOLLEKTIV CHAT</h3>
-  <div id="chatFeed"></div>
-  <div class="chat-buttons">
-    <button data-chat="JAG ÄR NÖJD">NÖJD</button>
-    <button data-chat="JAG ÄR INTE NÖJD">INTE NÖJD</button>
-    <button data-chat="KÖR">KÖR</button>
-    <button data-chat="VÄNTA">VÄNTA</button>
-    <button data-chat="MER">MER</button>
-    <button data-chat="MINDRE">MINDRE</button>
-    <button data-chat="BRA DÄR">BRA DÄR</button>
-    <button data-chat="SPARA DEN HÄR">SPARA</button>
+  <h1>KOLLEKTIV / POSTER</h1>
+  <div class="small">K/P V2.1 · RETRO COLLECTIVE</div>
+
+  <div class="left-section">
+    <div id="collectiveBox">
+      <div id="collectiveStatus"><span id="netDot"></span><strong id="roomLabel">SOLO / EJ ANSLUTEN</strong></div>
+      <div id="presence"></div>
+      <div class="grid" style="margin-top:6px">
+        <button id="copyRoom">KOPIERA LÄNK</button>
+        <button id="leaveRoom">LÄMNA</button>
+      </div>
+    </div>
   </div>
-  <div id="roleTools">
-    <div id="roleVoteStatus"></div>
+
+  <div class="left-section">
+    <h3>BYT ROLL</h3>
+    <div id="roleChoice" class="hidden">
+      <div class="hint">BEGÄR NY ROLL</div>
+      <div id="roleChoiceControls">
+        <select id="desiredRole"></select>
+        <button id="chooseRole">BEGÄR</button>
+      </div>
+    </div>
+    <div id="roleTools"><div id="roleVoteStatus"></div></div>
   </div>
+
+  <div class="left-section">
+    <h3>FORMAT</h3>
+    <div id="formatControls">
+      <select id="paperSize" aria-label="Pappersformat">
+        <option value="A4">A4</option>
+        <option value="A3">A3</option>
+      </select>
+      <select id="paperOrientation" aria-label="Orientering">
+        <option value="portrait">PORTRÄTT</option>
+        <option value="landscape">LANDSKAP</option>
+      </select>
+      <button id="requestFormat">BEGÄR FORMATBYTE</button>
+    </div>
+    <div id="formatStatus"></div>
+  </div>
+
+  <div class="left-section">
+    <h3>KOLLEKTIV CHAT</h3>
+    <div id="chatFeed"></div>
+    <div class="chat-buttons">
+      <button data-chat="JAG ÄR NÖJD">NÖJD</button>
+      <button data-chat="JAG ÄR INTE NÖJD">INTE NÖJD</button>
+      <button data-chat="KÖR">KÖR</button>
+      <button data-chat="VÄNTA">VÄNTA</button>
+      <button data-chat="MER">MER</button>
+      <button data-chat="MINDRE">MINDRE</button>
+      <button data-chat="BRA DÄR">BRA DÄR</button>
+      <button data-chat="SPARA DEN HÄR">SPARA</button>
+    </div>
+  </div>
+
+  <div id="signature">KOLLEKTIV / POSTER<br>K/P · EGET INTERNETVERKTYG</div>
 </div>
 
 <div class="app">
   <main class="stage"><button id="posterView">VISA POSTER</button><canvas id="canvas" width="600" height="900"></canvas></main>
   <aside class="panel">
-    <h1>KOLLEKTIV / POSTER</h1><div class="small">KOLLEKTIV VERSION · K/P V2 · RETRO COLLECTIVE</div>
-    <hr>
-    <div class="modebar" id="modes">
+<div class="modebar" id="modes">
       <button data-mode="background">BAKGRUND</button><button data-mode="texture">TEXTUR</button><button data-mode="stickers">STICKERS</button>
       <button data-mode="copy">COPYWRITER</button><button data-mode="font">TYPSNITT</button><button data-mode="draw">TECKNA</button>
       <button data-mode="paint">PAINTBRUSH</button><button data-mode="chaos">CHAOS</button><button data-mode="photo">FOTOGRAF</button>
     </div>
-    <div id="collectiveBox">
-      <div id="collectiveStatus"><span id="netDot"></span><strong id="roomLabel">SOLO / EJ ANSLUTEN</strong></div>
-      <div id="presence"></div>
-      <div id="roleChoice" class="hidden">
-        <div class="hint">BEGÄR NY ROLL</div>
-        <div id="roleChoiceControls">
-          <select id="desiredRole"></select>
-          <button id="chooseRole">BEGÄR</button>
-        </div>
-      </div>
-      <div class="grid" style="margin-top:6px"><button id="copyRoom">KOPIERA RUMSLÄNK</button><button id="leaveRoom">LÄMNA RUM</button></div>
-    </div>
     <div id="simpleRoleHeader">DIN ROLL</div><div id="simpleRoleName">—</div><div id="controls"></div>
-    <div id="signature">KOLLEKTIV / POSTER<br>K/P · EGET INTERNETVERKTYG</div>
     <hr>
     <div class="grid"><button id="export">EXPORTERA PNG</button><button id="reset" class="danger">RENSA</button></div>
   </aside>
@@ -307,6 +395,14 @@ body.poster-only .app{background:var(--paper)!important}
   <h2>ROLLFÖRFRÅGAN</h2>
   <div id="voteText" class="hint">Övriga spelare måste godkänna. Ett NEJ avbryter.</div>
   <div class="grid" style="margin-top:10px"><button id="voteYes">JA</button><button id="voteNo" class="danger">NEJ</button></div>
+</div></div>
+<div id="formatVoteOverlay"><div class="modal-card">
+  <h2>FORMATBYTE</h2>
+  <div id="formatVoteText" class="hint">Alla måste rösta. Ett NEJ avbryter.</div>
+  <div class="grid" style="margin-top:10px">
+    <button id="formatVoteYes">JA</button>
+    <button id="formatVoteNo" class="danger">NEJ</button>
+  </div>
 </div></div>
 <div id="cameraOverlay"><div class="modal-card">
   <h2>KAMERA</h2>
@@ -344,7 +440,7 @@ body.poster-only .app{background:var(--paper)!important}
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const C=document.getElementById('canvas'),ctx=C.getContext('2d');
-const W=C.width,H=C.height;
+let W=C.width,H=C.height;
 const socket=io({
  autoConnect:true,
  transports:['polling','websocket'],
@@ -355,7 +451,7 @@ const socket=io({
  timeout:12000
 });
 let roomCode=null,mySocketId=null,applyingRemote=false,syncTimer=null,lastSentJSON='',participants=[];
-let assignedRole=null,currentVote=null,audioCtx=null,cameraStream=null,drawTool='pen',erasing=false,pendingAssignedRole=null;
+let assignedRole=null,currentVote=null,currentFormatVote=null,audioCtx=null,cameraStream=null,drawTool='pen',erasing=false,pendingAssignedRole=null;
 const liveUntil=new Map();
 let pendingRoom=(new URLSearchParams(location.search).get('room')||'').trim().toUpperCase();
 let reconnectRoom=sessionStorage.getItem('kollektiv-room')||'';
@@ -473,6 +569,7 @@ function updatePresence(list=[]){
 }
 function setRoomUI(){
  updateRoleChoice();
+ applyCanvasFormat();
  const dot=document.getElementById('netDot'),lab=document.getElementById('roomLabel');
  if(multiplayerActive()){
    dot.classList.add('on');
@@ -492,6 +589,7 @@ function enterRoom(res){
    applyingRemote=true;
    Object.assign(state,res.state);
    normalizeState();
+   applyCanvasFormat();
    hydratePhotos();
    applyingRemote=false;
  }
@@ -543,6 +641,7 @@ const drawingAssets=[
 ];
 function blankState(){
  return {
+  format:{size:'A4',orientation:'portrait'},
   bg:{type:'solid',c1:'#ffffff',c2:'#ffffff',c3:'#ffffff',colors:1,angle:0},
   texture:{type:'none',opacity:0,scale:18,color:'#111111'},
   stickers:[],texts:[],strokes:[],photos:[],
@@ -552,6 +651,25 @@ function blankState(){
  };
 }
 const state=blankState();
+const FORMAT_DIMS={
+ 'A4:portrait':[794,1123],
+ 'A4:landscape':[1123,794],
+ 'A3:portrait':[1123,1587],
+ 'A3:landscape':[1587,1123]
+};
+function currentFormatKey(){
+ const f=state.format||{size:'A4',orientation:'portrait'};
+ return `${f.size||'A4'}:${f.orientation||'portrait'}`;
+}
+function applyCanvasFormat(){
+ const dims=FORMAT_DIMS[currentFormatKey()]||FORMAT_DIMS['A4:portrait'];
+ if(C.width!==dims[0]||C.height!==dims[1]){
+   C.width=dims[0];C.height=dims[1];W=C.width;H=C.height;
+ }
+ const ps=document.getElementById('paperSize'),po=document.getElementById('paperOrientation');
+ if(ps)ps.value=state.format?.size||'A4';
+ if(po)po.value=state.format?.orientation||'portrait';
+}
 function serializableState(){
  return JSON.parse(JSON.stringify(state,(k,v)=>k==='img'?undefined:v));
 }
@@ -561,6 +679,7 @@ function saveLocal(){
  scheduleRoomSync();
 }
 function normalizeState(){
+ state.format=state.format||{size:'A4',orientation:'portrait'};
  state.strokes=(state.strokes||[]).map(st=>{if(!st.color)st.color=state.draw?.color||'#101010';return st;});
  state.draw=state.draw||{
    size:state.paint?.size||22,
@@ -594,6 +713,7 @@ function normalizeState(){
  });
 }
 normalizeState();
+applyCanvasFormat();
 function hydratePhotos(){
  state.photos.forEach((p,i)=>{
   p.x??=W/2;p.y??=H/2;p.w??=360;p.h??=300;p.rot??=0;p.opacity??=100;
@@ -1813,6 +1933,7 @@ ${slider('TAGGIG',state.paint,'jagged',0,100)}
 <button id="chaosMax">ALLT 100</button>
 </div>`;
  if(mode==='photo')s=`<h2>FOTOGRAF</h2><div class="grid"><button id="importPhotos">IMPORTERA FOTON</button><button id="camera">ÖPPNA KAMERA</button></div><div class="hint">På Render/HTTPS öppnas datorns webbkamera direkt.</div><div class="object-list">${state.photos.length?state.photos.map((x,i)=>`<button data-pick-photo="${i}" class="${i===selectedPhoto?'active':''}">FOTO ${i+1}</button>`).join(''):'<span class="hint">Inga foton ännu.</span>'}</div>${photoControls()}`;
+ if(s.includes('type="range"'))s+=`<button id="resetVisibleSliders" type="button">NOLLSTÄLL REGLAGE</button>`;
  el.innerHTML=s;
  wireControls();
 }
@@ -1861,6 +1982,9 @@ function textControls(fontOnly){
  }
 
  const fonts=[
+  'Helvetica',
+  'Arial',
+  'Times New Roman',
   'Impact',
   'Courier New',
   'Georgia',
@@ -1896,6 +2020,12 @@ function wireControls(){
    i.value=i.dataset.reset;
    i.dispatchEvent(new Event('input',{bubbles:true}));
  });
+ if(q('resetVisibleSliders'))q('resetVisibleSliders').onclick=()=>{
+   el.querySelectorAll('input[type=range][data-reset]').forEach(i=>{
+     i.value=i.dataset.reset;
+     i.dispatchEvent(new Event('input',{bubbles:true}));
+   });
+ };
 
  if(q('bgType')){q('bgType').value=state.bg.type;q('bgType').onchange=()=>{state.bg.type=q('bgType').value;saveLocal();render();buildControls()};q('bgColors').value=state.bg.colors;q('bgColors').onchange=()=>{state.bg.colors=+q('bgColors').value;buildControls();render()}}
  if(q('texType')){q('texType').value=state.texture.type;q('texType').onchange=()=>{state.texture.type=q('texType').value;saveLocal();render()}}
@@ -2085,6 +2215,56 @@ C.onpointerleave=finishDrawingGesture;
 
 
 document.querySelectorAll('[data-chat]').forEach(b=>b.onclick=()=>{primeAudio();if(multiplayerActive())socket.emit('quick-chat',{room:roomCode,phrase:b.dataset.chat})});
+function showFormatVote(v){
+ currentFormatVote=v||null;
+ const ov=document.getElementById('formatVoteOverlay'),st=document.getElementById('formatStatus');
+ if(!v){ov.classList.remove('show');st.textContent='';return}
+ const voted=(v.voters||[]).includes(mySocketId);
+ st.textContent=`${v.yes}/${v.total} HAR RÖSTAT JA`;
+ document.getElementById('formatVoteText').textContent=
+  `${v.byName||'NÅGON'} VILL BYTA TILL ${v.size} · ${v.orientation==='landscape'?'LANDSKAP':'PORTRÄTT'} · ${v.yes}/${v.total} JA`;
+ ov.classList.toggle('show',!voted);
+}
+document.getElementById('requestFormat').onclick=()=>{
+ if(!multiplayerActive())return;
+ const size=document.getElementById('paperSize').value;
+ const orientation=document.getElementById('paperOrientation').value;
+ socket.timeout(6000).emit('request-format',{room:roomCode,size,orientation},(err,res)=>{
+  if(err||!res?.ok){
+   const st=document.getElementById('formatStatus');
+   st.textContent=res?.error||'KUNDE INTE BEGÄRA FORMATBYTE';
+   setTimeout(()=>{if(!currentFormatVote)st.textContent=''},1800);
+  }
+ });
+};
+document.getElementById('formatVoteYes').onclick=()=>{
+ if(currentFormatVote)socket.emit('format-vote',{room:roomCode,yes:true});
+ document.getElementById('formatVoteOverlay').classList.remove('show');
+};
+document.getElementById('formatVoteNo').onclick=()=>{
+ if(currentFormatVote)socket.emit('format-vote',{room:roomCode,yes:false});
+ document.getElementById('formatVoteOverlay').classList.remove('show');
+};
+socket.on('format-vote-request',v=>{showFormatVote(v);if(v.by!==mySocketId)voteSound()});
+socket.on('format-vote-state',showFormatVote);
+socket.on('format-vote-cancelled',d=>{
+ showFormatVote(null);
+ const st=document.getElementById('formatStatus');
+ st.textContent=(d?.byName||'NÅGON')+' SA NEJ';
+ setTimeout(()=>st.textContent='',1600);
+});
+socket.on('format-change-complete',d=>{
+ showFormatVote(null);
+ if(!d?.state)return;
+ applyingRemote=true;
+ Object.assign(state,d.state);
+ normalizeState();
+ applyCanvasFormat();
+ hydratePhotos();
+ lastSentJSON=JSON.stringify(serializableState());
+ applyingRemote=false;
+ buildControls();render();
+});
 document.getElementById('voteYes').onclick=()=>{
  if(currentVote)socket.emit('role-request-vote',{room:roomCode,yes:true});
  document.getElementById('voteOverlay').classList.remove('show');
@@ -2219,6 +2399,7 @@ socket.on('room-state',payload=>{
  applyingRemote=true;
  Object.assign(state,payload.state);
  normalizeState();
+ applyCanvasFormat();
  hydratePhotos();
  if(typing && state.texts[selectedText] && localText!=null)state.texts[selectedText].text=localText;
  lastSentJSON=JSON.stringify(serializableState());
@@ -2274,6 +2455,7 @@ document.getElementById('posterView').onclick=()=>{
 document.getElementById('reset').onclick=()=>{
  if(!confirm('Rensa hela postern för alla i rummet?'))return;
  Object.assign(state,blankState());
+ applyCanvasFormat();
  selectedSticker=-1;selectedText=-1;selectedPhoto=-1;
  drawing=false;activeStroke=null;erasing=false;
  buildControls();render();
@@ -2299,6 +2481,7 @@ function offerPngDownload(dataUrl){
  }
  box.querySelector('#pngPreview').src=dataUrl;
  box.querySelector('#pngRealDownload').href=dataUrl;
+ box.querySelector('#pngRealDownload').download=`KOLLEKTIV_${roomCode||'SOLO'}_${state.format?.size||'A4'}_${state.format?.orientation||'portrait'}_${new Date().toISOString().slice(0,10)}.png`;
 }
 document.getElementById('export').onclick=()=>{
  setMode(mode);

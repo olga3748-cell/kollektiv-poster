@@ -1,26 +1,16 @@
-# KOLLEKTIV / POSTER — K/P V2
+# KOLLEKTIV / POSTER — K/P V2.1
 
-Fokus i den här versionen:
-- Offwhite, handbyggd retro-internet-identitet.
-- Större poster och smalare kontrollpanel.
-- Deltagarlista är nedtonad, med diskret ● när någon arbetar.
-- Fler fasta chattfraser.
-- Nytt rollsystem:
-  - välj vilken roll du vill begära, oavsett antal spelare;
-  - om rollen är ledig får du den efter att övriga godkänt;
-  - om rollen är upptagen byter du roll med den personen efter att övriga godkänt;
-  - ett NEJ avbryter;
-  - den som begär behöver inte rösta;
-  - i ett enpersonsrum sker bytet direkt;
-  - om någon ritar färdigt genomförs det lokala rollbytet först efter avslutat drag.
-- Ett kort WebAudio-pling spelas hos de andra när en rollförfrågan kommer.
-- Exportnamn innehåller rumskod och datum.
-- Textfältet tappar inte längre fokus när andra skickar state-uppdateringar.
-- Första steget mot operationsbaserad multiplayer:
-  - textinmatning synkas som små `text-op`;
-  - nya ritdrag synkas som `stroke-add`;
-  - suddning synkas som `strokes-replace`;
-  - full-state finns kvar som fallback för övriga verktyg.
+- Helvetica i hela hemsidans UI.
+- Postertypsnitt: Helvetica, Arial, Times New Roman + tidigare typsnitt.
+- Rum, deltagare, rollbyte, format och chat ligger till vänster.
+- Höger sida är bara verktygslådan samt export/reset.
+- Chatten är större och mer läsbar.
+- A4/A3 och porträtt/landskap.
+- Alla aktiva spelare måste rösta JA för ett formatbyte.
+- Befintligt innehåll skalas när formatet ändras.
+- Reset behåller aktuellt format.
+- Alla sliders har synlig ↺ och knappen NOLLSTÄLL REGLAGE.
+- Tidigare roll-swap, pling, live-status, textfokusfix och operationssynk är kvar.
 
 Deploy:
 npm install

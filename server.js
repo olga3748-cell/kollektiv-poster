@@ -9,6 +9,7 @@ const rooms=new Map(),CHARS='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ROLES=['background','texture','stickers','copy','font','draw','paint','chaos','photo'];
 function blankRoomState(){
  return {
+  format:{size:'A4',orientation:'portrait'},
   bg:{type:'solid',c1:'#ffffff',c2:'#ffffff',c3:'#ffffff',colors:1,angle:0},
   texture:{type:'none',opacity:0,scale:18,color:'#111111'},
   stickers:[],
@@ -21,6 +22,32 @@ function blankRoomState(){
  };
 }
 
+const FORMAT_DIMS={
+ 'A4:portrait':[794,1123],
+ 'A4:landscape':[1123,794],
+ 'A3:portrait':[1123,1587],
+ 'A3:landscape':[1587,1123]
+};
+function formatDims(f={}){
+ return FORMAT_DIMS[`${f.size||'A4'}:${f.orientation||'portrait'}`]||FORMAT_DIMS['A4:portrait'];
+}
+function scalePosterState(state,nextFormat){
+ const oldFormat=state.format||{size:'A4',orientation:'portrait'};
+ const [ow,oh]=formatDims(oldFormat),[nw,nh]=formatDims(nextFormat);
+ const sx=nw/ow,sy=nh/oh,ss=Math.min(sx,sy);
+ const scaleXY=o=>{if(!o)return;if(Number.isFinite(o.x))o.x*=sx;if(Number.isFinite(o.y))o.y*=sy};
+ for(const o of state.stickers||[]){scaleXY(o);if(Number.isFinite(o.size))o.size*=ss}
+ for(const o of state.texts||[]){scaleXY(o);if(Number.isFinite(o.size))o.size*=ss}
+ for(const o of state.photos||[]){scaleXY(o);if(Number.isFinite(o.w))o.w*=sx;if(Number.isFinite(o.h))o.h*=sy}
+ for(const st of state.strokes||[]){
+  for(const p of st.points||[]){if(Number.isFinite(p.x))p.x*=sx;if(Number.isFinite(p.y))p.y*=sy}
+  if(Number.isFinite(st.size))st.size*=ss;
+ }
+ if(state.draw&&Number.isFinite(state.draw.size))state.draw.size*=ss;
+ if(state.paint&&Number.isFinite(state.paint.size))state.paint.size*=ss;
+ state.format={size:nextFormat.size,orientation:nextFormat.orientation};
+ return state;
+}
 const PHRASES=new Set(['JAG ÄR NÖJD','JAG ÄR INTE NÖJD','KÖR','VÄNTA','MER','MINDRE','BRA DÄR','SPARA DEN HÄR']);
 const cleanRoom=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8);
 const cleanName=v=>String(v||'ANONYM').replace(/[<>]/g,'').trim().slice(0,24)||'ANONYM';
@@ -36,6 +63,17 @@ function roleRequestPayload(r){
   by:q.by,byName:q.byName,role:q.role,targetId:q.targetId||null,targetName:q.targetName||null,
   yes:q.yes.size,total:q.required.size,voters:[...q.voters]
  };
+}
+function formatVotePayload(r){
+ if(!r.formatVote)return null;
+ const q=r.formatVote;
+ return {by:q.by,byName:q.byName,size:q.size,orientation:q.orientation,yes:q.yes.size,total:q.required.size,voters:[...q.voters]};
+}
+function finishFormatVote(c,r){
+ const q=r.formatVote;if(!q)return;
+ scalePosterState(r.state,{size:q.size,orientation:q.orientation});
+ r.formatVote=null;r.updated=Date.now();
+ io.to(c).emit('format-change-complete',{state:r.state});
 }
 function finishRoleRequest(c,r){
  const q=r.roleRequest;
@@ -71,6 +109,13 @@ function leave(socket){
     else io.to(c).emit('role-request-state',roleRequestPayload(r));
    }
   }
+  if(r.formatVote){
+   const q=r.formatVote;
+   q.required.delete(socket.id);q.voters.delete(socket.id);q.yes.delete(socket.id);
+   if(q.required.size&&q.yes.size===q.required.size)finishFormatVote(c,r);
+   else if(q.required.size)io.to(c).emit('format-vote-state',formatVotePayload(r));
+   else r.formatVote=null;
+  }
   presence(c);r.updated=Date.now();
  }
 }
@@ -95,12 +140,12 @@ app.get('/health',(_q,res)=>res.json({ok:true,rooms:rooms.size}));
 app.get('/r/:code',(q,res)=>res.redirect('/?room='+encodeURIComponent(cleanRoom(q.params.code))));
 app.get('*',(_q,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 io.on('connection',socket=>{
- socket.on('create-room',({name}={},ack=()=>{})=>{leave(socket);let c=code(),r={state:blankRoomState(),people:new Map(),roleRequest:null,updated:Date.now()};rooms.set(c,r);let role=availableRole(r);r.people.set(socket.id,{name:cleanName(name),role});socket.join(c);socket.data.room=c;ack({ok:true,room:c,state:r.state,role,participants:list(c)});presence(c)});
+ socket.on('create-room',({name}={},ack=()=>{})=>{leave(socket);let c=code(),r={state:blankRoomState(),people:new Map(),roleRequest:null,formatVote:null,updated:Date.now()};rooms.set(c,r);let role=availableRole(r);r.people.set(socket.id,{name:cleanName(name),role});socket.join(c);socket.data.room=c;ack({ok:true,room:c,state:r.state,role,participants:list(c)});presence(c)});
  socket.on('join-room',({room,name}={},ack=()=>{})=>{let c=cleanRoom(room),r=rooms.get(c);if(!r)return ack({ok:false,error:'Rummet finns inte längre.'});if(r.people.size>=ROLES.length)return ack({ok:false,error:'Rummet är fullt (max 9 personer).'});leave(socket);let role=availableRole(r);r.people.set(socket.id,{name:cleanName(name),role});socket.join(c);socket.data.room=c;r.updated=Date.now();ack({ok:true,room:c,state:r.state,role,participants:list(c)});presence(c)});
  socket.on('request-role',({room,role}={},ack=()=>{})=>{
   const c=cleanRoom(room),r=rooms.get(c);
   if(socket.data.room!==c||!r)return ack({ok:false,error:'RUMMET FINNS INTE.'});
-  if(r.roleRequest)return ack({ok:false,error:'EN ROLLFÖRFRÅGAN PÅGÅR REDAN.'});
+  if(r.roleRequest||r.formatVote)return ack({ok:false,error:'EN OMRÖSTNING PÅGÅR REDAN.'});
   role=String(role||'');
   if(!ROLES.includes(role))return ack({ok:false,error:'OGILTIG ROLL.'});
   const requester=r.people.get(socket.id);
@@ -143,6 +188,36 @@ io.on('connection',socket=>{
   if(q.yes.size===q.required.size)finishRoleRequest(c,r);
   else io.to(c).emit('role-request-state',roleRequestPayload(r));
  });
+ socket.on('request-format',({room,size,orientation}={},ack=()=>{})=>{
+  const c=cleanRoom(room),r=rooms.get(c);
+  if(socket.data.room!==c||!r)return ack({ok:false,error:'RUMMET FINNS INTE.'});
+  if(r.roleRequest||r.formatVote)return ack({ok:false,error:'EN OMRÖSTNING PÅGÅR REDAN.'});
+  size=String(size||'').toUpperCase();
+  orientation=String(orientation||'').toLowerCase();
+  if(!['A4','A3'].includes(size)||!['portrait','landscape'].includes(orientation))return ack({ok:false,error:'OGILTIGT FORMAT.'});
+  const current=r.state.format||{size:'A4',orientation:'portrait'};
+  if(current.size===size&&current.orientation===orientation)return ack({ok:false,error:'POSTERN HAR REDAN DET FORMATET.'});
+  const p=r.people.get(socket.id);
+  if(!p)return ack({ok:false,error:'DU FINNS INTE I RUMMET.'});
+  const required=new Set([...r.people.keys()]);
+  r.formatVote={by:socket.id,byName:p.name,size,orientation,required,yes:new Set(),voters:new Set()};
+  ack({ok:true});
+  io.to(c).emit('format-vote-request',formatVotePayload(r));
+ });
+ socket.on('format-vote',({room,yes}={})=>{
+  const c=cleanRoom(room),r=rooms.get(c),q=r?.formatVote;
+  if(socket.data.room!==c||!r||!q||!q.required.has(socket.id)||q.voters.has(socket.id))return;
+  q.voters.add(socket.id);
+  if(!yes){
+   const p=r.people.get(socket.id);
+   r.formatVote=null;
+   io.to(c).emit('format-vote-cancelled',{byName:p?.name||'NÅGON'});
+   return;
+  }
+  q.yes.add(socket.id);
+  if(q.yes.size===q.required.size)finishFormatVote(c,r);
+  else io.to(c).emit('format-vote-state',formatVotePayload(r));
+ });
  socket.on('activity',({room}={})=>{
   const c=cleanRoom(room),r=rooms.get(c);
   if(socket.data.room!==c||!r||!r.people.has(socket.id))return;
@@ -173,9 +248,9 @@ io.on('connection',socket=>{
   socket.to(c).emit('state-op',{room:c,type:'strokes-replace',strokes:arr});
  });
  socket.on('state-update',({room,state}={})=>{let c=cleanRoom(room),r=rooms.get(c);if(socket.data.room!==c||!r)return;let p=r.people.get(socket.id),n=safe(state);if(!p||!n)return;r.state=mergeByRole(r.state,n,p.role);r.updated=Date.now();socket.to(c).emit('room-state',{room:c,state:r.state,by:socket.id})});
- socket.on('reset-room',({room}={})=>{let c=cleanRoom(room),r=rooms.get(c);if(socket.data.room!==c||!r)return;r.state=blankRoomState();r.updated=Date.now();io.to(c).emit('room-state',{room:c,state:r.state,by:socket.id,reset:true})});
+ socket.on('reset-room',({room}={})=>{let c=cleanRoom(room),r=rooms.get(c);if(socket.data.room!==c||!r)return;const f=r.state.format||{size:'A4',orientation:'portrait'};r.state=blankRoomState();r.state.format=f;r.updated=Date.now();io.to(c).emit('room-state',{room:c,state:r.state,by:socket.id,reset:true})});
  socket.on('quick-chat',({room,phrase}={})=>{let c=cleanRoom(room),r=rooms.get(c);phrase=String(phrase||'').toUpperCase();if(socket.data.room!==c||!r||!PHRASES.has(phrase))return;let p=r.people.get(socket.id);io.to(c).emit('quick-chat',{name:p.name,phrase})});
  socket.on('leave-room',()=>leave(socket));socket.on('disconnect',()=>leave(socket));
 });
 setInterval(()=>{let n=Date.now();for(let[c,r]of rooms)if(!r.people.size&&n-r.updated>6*60*60*1000)rooms.delete(c)},60000).unref();
-server.listen(Number(process.env.PORT||3000),'0.0.0.0',()=>console.log('KOLLEKTIV / POSTER K/P V2'));
+server.listen(Number(process.env.PORT||3000),'0.0.0.0',()=>console.log('KOLLEKTIV / POSTER K/P V2.1'));
