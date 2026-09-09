@@ -1,30 +1,40 @@
-# Kollektiv Poster v4.1
+# KOLLEKTIV / POSTER — Multiplayer V2
 
-Kollektiv Poster är en gemensam posterverkstad i webbläsaren. Nio roller arbetar samtidigt i samma rum.
+Det här är en serverbaserad multiplayer-version. Öppna INTE `public/index.html`
+direkt som en lokal fil; då finns ingen Socket.IO-server och rum kan inte fungera.
 
-## Roller
-1. BAKGRUND
-2. TEXTUR
-3. STICKERS
-4. COPYWRITER
-5. TYPSNITT
-6. TECKNA
-7. PAINTBRUSH
-8. CHAOS
-9. FOTOGRAF
+## Lokalt
+1. Installera Node.js 20+
+2. I projektmappen:
+   npm install
+   npm start
+3. Öppna:
+   http://localhost:3000
 
-## Rollbyte
-Rollbyten sker genom en gemensam godkännandeprocess. En ledig roll kan också begäras. Alla deltagare i samma rum ser vilka som har godkänt och vilka som väntar.
+Testa multiplayer genom att öppna samma adress i två olika webbläsarfönster.
+Skapa rum i det ena, kopiera rumslänken och öppna länken i det andra.
 
-## CHAOS
-CHAOS lägger ett globalt filter ovanpå hela den färdiga postern. Filter: glitch, ripple, warp, jitter, rotation, scatter, solarize och echo. Mängd och frekvens styr effekten.
+## Render
+Ladda upp hela projektmappen till ett Git-repo och skapa en Render Web Service,
+eller använd `render.yaml`.
 
-## Arkiv
-En färdig poster kan sparas i rummets arkiv. Arkivet visar miniatyrer och poster-DNA med deltagare, rollbyten, kaos, textlager, foton, stickers och streck. Arkivet ligger i serverns minne och återställs vid omstart/deploy.
-
-## Start
-```bash
+Build command:
 npm install
+
+Start command:
 npm start
-```
-Öppna sedan serverns adress i webbläsaren.
+
+När appen är deployad ska alla deltagare använda SAMMA deployade URL.
+En rumslänk ser ut ungefär så här:
+https://din-app.onrender.com/?room=ABCDE
+
+## V2-fixar
+- Rumslänk använder `?room=ABCDE` i stället för hash.
+- Tydligare startskärm: SKAPA RUM / GÅ MED.
+- Knappar aktiveras först när servern verkligen är ansluten.
+- Tydliga serverfel i UI.
+- Socket.IO använder polling + websocket och återansluter automatiskt.
+- Återanslutning försöker gå tillbaka till samma rum.
+- Delad länk förifyller rumskoden.
+- Sixtyfour och UnifrakturMaguntia är borttagna.
+- V6.3-funktionerna behålls.
