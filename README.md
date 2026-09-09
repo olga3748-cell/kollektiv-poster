@@ -1,23 +1,25 @@
-# KOLLEKTIV / POSTER — Multiplayer V4
+# KOLLEKTIV / POSTER — SIMPLE V1
 
-Den här versionen är medvetet enklare och bygger på stabila Multiplayer V2.
+En medvetet lugnare multiplayer-prototyp.
 
-## Fixat
-- Chatten sitter till vänster och består av sex fasta fraser.
-- Rollbyte kräver JA från ALLA aktiva deltagare. Ett NEJ avbryter.
-- Ett kort ljud spelas när någon annan föreslår rollbyte.
-- Roller är unika: två personer kan inte ha samma roll samtidigt. Max 9 personer.
-- Rollknapparna är låsta till den roll servern har tilldelat dig.
-- Servern slår ihop ändringar per roll i stället för att låta hela postern skriva över varandra.
-  Det gör att t.ex. TECKNA, BAKGRUND och COPYWRITER kan arbeta samtidigt.
-- PAINTBRUSH-koden är återtagen från stabil V2 och inte ombyggd.
-- FOTOGRAF använder riktig getUserMedia-webbkamera på HTTPS/Render.
-- TECKNA har RITA / SUDDA. Suddgummit delar bort de delar av draget man drar över.
-- Typsnittslistan är nedskalad till 10 tydligare olika systemtypsnitt.
+## Sex roller
+BAKGRUND · TEXTUR · STICKERS · TEXT · RITA · FOTO
+
+Varje aktiv person har en unik roll. Max 6 personer. Flera personer kan arbeta
+samtidigt eftersom servern synkar varje rolls del av postern separat.
+
+## Förenklat
+- Rollmenyn är gömd: du ser bara DIN ROLL.
+- Färre kontroller per roll.
+- TEXT kombinerar copywriter + typsnitt och har 6 tydligt olika typsnitt.
+- RITA kombinerar TECKNA + PAINTBRUSH med RITA/SUDDA, färg och fyra penselpresets:
+  NORMAL, MJUK, TAGGIG, KLADDIG.
+- Snabbchatten är liten och sitter till vänster.
+- Rollbyte kräver fortfarande JA från alla och spelar ett kort ljud.
+- FOTO behåller livekamera på HTTPS/localhost.
+- VISA POSTER kan gömma gränssnittet.
 
 ## Kör
 npm install
 npm start
-
-Öppna http://localhost:3000, eller deploya hela mappen på Render.
-Kamera kräver HTTPS eller localhost och webbläsarens kameratillstånd.
+Öppna http://localhost:3000 eller deploya hela mappen på Render.
