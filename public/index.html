@@ -162,6 +162,7 @@ nav.rail{
 .chat-line .chat-time{color:var(--ink-dim);font-size:9.5px;margin-right:4px}
 .chat-buttons{display:flex;flex-wrap:wrap;gap:4px}
 .chat-buttons button{font-size:10.5px;padding:3px 7px;width:auto}
+.chat-badge{color:#c33;font-size:9px;font-weight:700;letter-spacing:.05em;margin-left:6px}
 
 #roleChoiceControls{display:grid;grid-template-columns:1fr auto;gap:5px}
 #roleChoiceControls select{width:100%}
@@ -330,7 +331,7 @@ aside.panel{
     <div class="rail-label">interagera</div>
 
     <button class="rail-item rail-tab-toggle" data-tab-target="chatTab">
-      <span>CHATT</span><span class="arrow">▾</span>
+      <span>CHATT<span id="chatBadge" class="chat-badge hidden">NYTT</span></span><span class="arrow">▾</span>
     </button>
     <div class="rail-tab hidden" id="chatTab">
       <div id="chatFeed"></div>
@@ -343,6 +344,11 @@ aside.panel{
         <button data-chat="MINDRE">MINDRE</button>
         <button data-chat="BRA DÄR">BRA DÄR</button>
         <button data-chat="SPARA DEN HÄR">SPARA</button>
+      </div>
+      <div class="rail-label">skicka ljud till alla</div>
+      <div class="chat-buttons">
+        <button data-sound-react="positive">POSITIVT LJUD</button>
+        <button data-sound-react="negative">NEGATIVT LJUD</button>
       </div>
     </div>
 
@@ -534,6 +540,12 @@ function soundFinished(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)r
 // reads as air/motion rather than a musical note, closer to a physical
 // shuffle than the chime-y cues above.
 function soundRemix(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;const n=audioCtx.currentTime,dur=.4;const buf=audioCtx.createBuffer(1,Math.round(audioCtx.sampleRate*dur),audioCtx.sampleRate);const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*(1-i/d.length);const src=audioCtx.createBufferSource();src.buffer=buf;const f=audioCtx.createBiquadFilter();f.type='bandpass';f.Q.value=.7;f.frequency.setValueAtTime(300,n);f.frequency.exponentialRampToValueAtTime(3200,n+dur*.6);f.frequency.exponentialRampToValueAtTime(500,n+dur);const g=audioCtx.createGain();g.gain.setValueAtTime(.35,n);g.gain.exponentialRampToValueAtTime(.001,n+dur);src.connect(f);f.connect(g);g.connect(audioCtx.destination);src.start(n);src.stop(n+dur)}catch(e){}}
+// K/P KOLLEKTIV: two "send a sound to everyone" reactions (see the
+// POSITIVT LJUD/NEGATIVT LJUD buttons in the chat panel) — same
+// one-liner-oscillator style as the rest, gated by soundEnabled and
+// wrapped in try/catch like every other sound function here.
+function soundPositive(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;const n=audioCtx.currentTime;[523,659,784].forEach((f,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='triangle';const t=n+i*.07;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(.09,t);g.gain.exponentialRampToValueAtTime(.001,t+.22);o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+.24)})}catch(e){}}
+function soundNegative(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.type='sawtooth';o.frequency.setValueAtTime(220,n);o.frequency.exponentialRampToValueAtTime(90,n+.4);g.gain.setValueAtTime(.08,n);g.gain.exponentialRampToValueAtTime(.001,n+.42);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.44)}catch(e){}}
 
 function updateSystemBar(){
  const el=document.getElementById('systemBar');if(!el)return;
@@ -636,7 +648,15 @@ function addChat(msg){
  d.innerHTML=`<span class="chat-time">${esc(t)}</span><span class="chat-name">${esc(msg.name||'ANONYM')}</span>: ${esc(msg.phrase||'')}`;
  f.appendChild(d);f.scrollTop=f.scrollHeight;
  while(f.children.length>30)f.firstChild.remove();
- if(msg.id&&msg.id!==mySocketId)chatSound();
+ if(msg.id&&msg.id!==mySocketId){
+  chatSound();
+  // K/P KOLLEKTIV: a small red "NYTT" badge on the CHATT tab itself, so a
+  // message from someone else doesn't go unnoticed while that tab is
+  // closed. Clearing it is wired where the tab actually gets opened, in
+  // the rail-tab-toggle click handler further down.
+  const chatTab=document.getElementById('chatTab'),badge=document.getElementById('chatBadge');
+  if(badge&&chatTab&&chatTab.classList.contains('hidden'))badge.classList.remove('hidden');
+ }
 }
 function showVote(v){
  currentVote=v||null;
@@ -3455,7 +3475,15 @@ function extractForeground(fullCanvas,bgCanvas){
 }
 function setMode(m,force=false){
  if(multiplayerActive()&&assignedRole&&m!==assignedRole&&!force)return;
- const guidedRole=guidedCurrentRole();
+ // K/P KOLLEKTIV: this whole guided-step gate is a solo-only concept (see
+ // updateRoleLocks/updateGuidedHint) — in a room, assignedRole (checked
+ // just above) is the only thing that should decide whether a mode switch
+ // is allowed. Leaving this gate live for multiplayer too was the actual
+ // bug behind "rollbytet flyttar mig men jag kommer inte åt verktygen":
+ // state.guided.step never advances in a room (GÅ VIDARE is hidden), so
+ // guidedRole stayed stuck on the very first role forever, silently
+ // returning here (skipping "mode=m" below) for every role after that.
+ const guidedRole=multiplayerActive()?null:guidedCurrentRole();
  if(guidedRole){
   const prevRole=guidedPrevRole();
   // hard-gated: the current unlocked role, or exactly one step back to
@@ -3987,6 +4015,17 @@ C.onpointerleave=finishDrawingGesture;
 
 
 document.querySelectorAll('[data-chat]').forEach(b=>b.onclick=()=>{primeAudio();if(multiplayerActive())socket.emit('quick-chat',{room:roomCode,phrase:b.dataset.chat})});
+
+// K/P KOLLEKTIV: "skicka ljud till alla" — plays only via the server echo
+// (like quick-chat's own sender-included broadcast), so everyone in the
+// room, sender included, hears it at the same moment.
+document.querySelectorAll('[data-sound-react]').forEach(b=>b.onclick=()=>{
+ primeAudio();
+ if(multiplayerActive())socket.emit('sound-react',{room:roomCode,type:b.dataset.soundReact});
+});
+socket.on('sound-react',d=>{
+ if(d&&d.type==='negative')soundNegative();else soundPositive();
+});
 
 // V11: LJUD on/off, remembered per device (not part of the poster's own
 // state — muting shouldn't be something a saved take carries around).
@@ -4540,6 +4579,10 @@ document.querySelectorAll('.rail-tab-toggle').forEach(function(toggle){
     var opening=panel.classList.contains('hidden');
     panel.classList.toggle('hidden');
     toggle.classList.toggle('open',opening);
+    if(opening&&toggle.dataset.tabTarget==='chatTab'){
+      var badge=document.getElementById('chatBadge');
+      if(badge)badge.classList.add('hidden');
+    }
   });
 });
 </script>

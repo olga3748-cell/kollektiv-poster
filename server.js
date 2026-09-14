@@ -69,8 +69,20 @@ class Room {
   list() {
     return [...this.participants.values()];
   }
+  // The first role in GUIDED_ORDER nobody currently holds — not just
+  // "count of participants so far": that broke as soon as anyone left and
+  // someone new joined (the count-based index could land back on a role
+  // that was still occupied). If everyone's role is taken (more people
+  // than roles), hand out the least-occupied one so it stays as fair as
+  // possible instead of erroring.
   nextRole() {
-    return GUIDED_ORDER[this.participants.size % GUIDED_ORDER.length];
+    const taken = new Set([...this.participants.values()].map((p) => p.role));
+    for (const r of GUIDED_ORDER) if (!taken.has(r)) return r;
+    const counts = new Map(GUIDED_ORDER.map((r) => [r, 0]));
+    for (const p of this.participants.values()) counts.set(p.role, (counts.get(p.role) || 0) + 1);
+    let best = GUIDED_ORDER[0], bestCount = Infinity;
+    for (const r of GUIDED_ORDER) { const c = counts.get(r); if (c < bestCount) { bestCount = c; best = r; } }
+    return best;
   }
 }
 
@@ -209,6 +221,16 @@ io.on('connection', (socket) => {
     const room = getOrNull(payload && payload.room);
     if (!room || socket.data.room !== room.code) return;
     socket.to(room.code).emit('activity', { id: socket.id });
+  });
+
+  // "Skicka ljud till alla" — a positive or negative sound reaction,
+  // broadcast to the whole room including the sender (same pattern as
+  // quick-chat), so everyone hears it land at the same moment.
+  socket.on('sound-react', (payload) => {
+    const room = getOrNull(payload && payload.room);
+    if (!room || socket.data.room !== room.code) return;
+    const type = (payload && payload.type === 'negative') ? 'negative' : 'positive';
+    io.to(room.code).emit('sound-react', { type, id: socket.id });
   });
 
   // Role rotation needs unanimous yes, just like a format change: it

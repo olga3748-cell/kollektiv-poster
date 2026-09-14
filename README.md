@@ -39,6 +39,20 @@ Formatbyte (byta pappersstorlek/orientering) fungerar på samma sätt: den
 som begär det måste få ja-röster från *alla* andra i rummet innan det
 faktiskt byts, eftersom det skalar om hela postern åt alla.
 
+Varje ny deltagare får den första lediga rollen (inte bara "nästa i tur och
+ordning") — lämnar någon rummet och en ny person går med kan den frigjorda
+rollen delas ut igen istället för att krocka med en redan upptagen.
+
+## Chatt och ljud
+
+Ett nytt meddelande i chatten visar en liten röd "NYTT"-markering på
+CHATT-fliken om den är stängd, så att man inte missar det — den försvinner
+så fort man öppnar fliken.
+
+Under chatten finns två knappar, **POSITIVT LJUD** och **NEGATIVT LJUD**,
+som skickar en ljudsignal till alla i rummet direkt (utan text) — bra för
+snabb feedback utan att skriva något.
+
 ## Köra lokalt
 
 Kräver Node.js 18+.
