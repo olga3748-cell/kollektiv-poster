@@ -7,11 +7,14 @@
 //
 // Rollsystem: när ett rum skapas/går man med i får varje deltagare
 // nästa roll i GUIDED_ORDER (person 1 = bakgrund, person 2 = textur, …).
-// Vem som helst kan begära "ROTERA ROLLER" — då flyttas ALLA deltagare
-// ett steg framåt i rollordningen samtidigt, direkt utan omröstning
-// (enligt den enklare modell som beskrevs för solo-varianten). Format-
-// byte (pappersstorlek/orientering) kräver däremot att alla röstar ja,
-// eftersom det skalar om hela postern åt alla.
+// Vem som helst kan trycka "BEGÄR ROLLBYTE" — det skickar en notis till
+// alla andra i rummet, och ALLA måste godkänna (samma unanima
+// omröstningsmönster som formatbyte) innan ALLA deltagare flyttas ett
+// steg framåt i rollordningen samtidigt. Ett NEJ avbryter begäran helt.
+// Rummet räknar hur många lyckade rotationer som gjorts — man är inte
+// "klar" (och får se export/rensa-skärmen) förrän alla har hunnit
+// rotera igenom samtliga GUIDED_ORDER.length roller, inte bara när någon
+// råkar stå på CHAOS.
 
 const path = require('path');
 const http = require('http');
@@ -59,6 +62,8 @@ class Room {
     this.participants = new Map();
     this.state = null; // opaque poster state blob, filled in by the first state-update
     this.formatVote = null; // {by, byName, size, orientation, voters:Set}
+    this.roleVote = null; // {by, byName, voters:Set}
+    this.roundsCompleted = 0; // successful role rotations this room has done
     this.createdAt = Date.now();
   }
   list() {
@@ -206,22 +211,44 @@ io.on('connection', (socket) => {
     socket.to(room.code).emit('activity', { id: socket.id });
   });
 
-  // Immediate round-robin rotation: everyone currently in the room moves
-  // one step forward together, cycling through GUIDED_ORDER, per the
-  // fairness rule ("alla ska ha haft alla roller"). No vote — anyone can
-  // trigger it.
-  socket.on('rotate-roles', (payload, cb) => {
+  // Role rotation needs unanimous yes, just like a format change: it
+  // moves EVERY participant, not just the requester, so everyone else
+  // gets a notification (role-request) and must approve (role-request-vote)
+  // before it happens. The requester auto-counts as a yes. A single NO
+  // cancels the whole request.
+  socket.on('request-role', (payload, cb) => {
     const room = getOrNull(payload && payload.room);
     if (!room || socket.data.room !== room.code) {
       cb && cb({ ok: false, error: 'Du är inte i det rummet.' });
       return;
     }
-    for (const p of room.participants.values()) {
-      const idx = GUIDED_ORDER.indexOf(p.role);
-      p.role = GUIDED_ORDER[(idx + 1 + GUIDED_ORDER.length) % GUIDED_ORDER.length];
+    if (room.roleVote) {
+      cb && cb({ ok: false, error: 'En rollbytesbegäran pågår redan.' });
+      return;
     }
-    io.to(room.code).emit('role-change-complete', { participants: room.list() });
+    const requester = room.participants.get(socket.id);
+    room.roleVote = {
+      by: socket.id,
+      byName: (requester && requester.name) || 'NÅGON',
+      voters: new Set([socket.id]),
+    };
     cb && cb({ ok: true });
+    broadcastRoleVote(room);
+    resolveRoleVoteIfReady(room);
+  });
+
+  socket.on('role-request-vote', (payload) => {
+    const room = getOrNull(payload && payload.room);
+    if (!room || socket.data.room !== room.code || !room.roleVote) return;
+    if (payload && payload.yes === false) {
+      const p = room.participants.get(socket.id);
+      io.to(room.code).emit('role-request-cancelled', { byName: (p && p.name) || 'NÅGON' });
+      room.roleVote = null;
+      return;
+    }
+    room.roleVote.voters.add(socket.id);
+    broadcastRoleVote(room);
+    resolveRoleVoteIfReady(room);
   });
 
   // Format change: needs unanimous yes because it rescales the whole
@@ -273,8 +300,11 @@ io.on('connection', (socket) => {
     // The actual visual reset reaches everyone through the normal
     // state-update -> room-state path a moment later; this just makes
     // sure a brand-new joiner right after a reset doesn't see stale
-    // pre-reset content.
+    // pre-reset content. A fresh poster also means nobody's had any
+    // role yet in this round, so the rotation counter starts over too.
     room.state = null;
+    room.roundsCompleted = 0;
+    if (room.roleVote) { room.roleVote = null; io.to(room.code).emit('role-request-cancelled', { byName: 'RENSA' }); }
   });
 });
 
@@ -301,6 +331,34 @@ function resolveFormatVoteIfReady(room) {
   io.to(v.by).emit('format-apply-mine', { size: v.size, orientation: v.orientation });
 }
 
+function broadcastRoleVote(room) {
+  if (!room.roleVote) return;
+  const v = room.roleVote;
+  io.to(room.code).emit('role-request', {
+    by: v.by,
+    byName: v.byName,
+    yes: v.voters.size,
+    total: room.participants.size,
+    voters: [...v.voters],
+  });
+}
+
+function resolveRoleVoteIfReady(room) {
+  const v = room.roleVote;
+  if (!v) return;
+  if (v.voters.size < room.participants.size) return;
+  room.roleVote = null;
+  for (const p of room.participants.values()) {
+    const idx = GUIDED_ORDER.indexOf(p.role);
+    p.role = GUIDED_ORDER[(idx + 1 + GUIDED_ORDER.length) % GUIDED_ORDER.length];
+  }
+  room.roundsCompleted += 1;
+  io.to(room.code).emit('role-change-complete', {
+    participants: room.list(),
+    finished: room.roundsCompleted >= GUIDED_ORDER.length,
+  });
+}
+
 function leaveCurrentRoom(socket) {
   const code = socket.data.room;
   if (!code) return;
@@ -313,12 +371,20 @@ function leaveCurrentRoom(socket) {
     room.formatVote.voters.delete(socket.id);
     if (room.formatVote.by === socket.id) room.formatVote = null;
   }
+  if (room.roleVote) {
+    room.roleVote.voters.delete(socket.id);
+    if (room.roleVote.by === socket.id) {
+      room.roleVote = null;
+      io.to(code).emit('role-request-cancelled', { byName: 'NÅGON (LÄMNADE RUMMET)' });
+    }
+  }
   if (room.participants.size === 0) {
     rooms.delete(code);
     return;
   }
   broadcastPresence(room);
   if (room.formatVote) resolveFormatVoteIfReady(room);
+  if (room.roleVote) resolveRoleVoteIfReady(room);
 }
 
 server.listen(PORT, () => {

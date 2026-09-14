@@ -23,14 +23,21 @@ ordning: person 1 = BAKGRUND, person 2 = TEXTUR, person 3 = COPYWRITER,
 person 4 = TYPSNITT, person 5 = STICKERS, person 6 = TECKNA,
 person 7 = PAINTBRUSH, person 8 = FOTOGRAF, person 9 = CHAOS.
 
-Vem som helst kan klicka **BYT ROLL → ROTERA ROLLER ETT STEG** — då flyttas
-*alla* i rummet ett steg framåt i den ordningen på en gång, direkt utan att
-någon behöver godkänna det. Fortsätter man rotera hinner alla runt alla
-roller till slut.
+Vem som helst kan klicka **BYT ROLL → BEGÄR ROLLBYTE**. Det skickar en
+notis till alla andra i rummet (samma ruta som dyker upp vid formatbyte),
+och *alla* måste godkänna innan något händer — säger någon nej avbryts
+begäran helt. När alla godkänt flyttas *alla* i rummet ett steg framåt i
+rollordningen på en gång. Man är inte "klar" (och får se export/rensa-
+skärmen) förrän gruppen har roterat hela vägen runt — dvs alla har haft
+alla roller minst en gång — inte bara när någon råkar stå på CHAOS.
 
-Formatbyte (byta pappersstorlek/orientering) är annorlunda, eftersom det
-skalar om hela postern åt alla: den som begär det måste få ja-röster från
-*alla* andra i rummet innan det faktiskt byts.
+Den gamla soloflödets "GÅ VIDARE"-knapp (som flyttar bara dig själv genom
+rollerna) är avstängd i den här varianten, eftersom det inte är ett
+gruppbeslut på samma sätt — begär-rollbyte-flödet ersätter den helt.
+
+Formatbyte (byta pappersstorlek/orientering) fungerar på samma sätt: den
+som begär det måste få ja-röster från *alla* andra i rummet innan det
+faktiskt byts, eftersom det skalar om hela postern åt alla.
 
 ## Köra lokalt
 

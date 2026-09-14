@@ -354,9 +354,9 @@ aside.panel{
     </button>
     <div class="rail-tab hidden" id="roleTab">
       <div id="roleChoice" class="hidden">
-        <div class="hint">Rotera alla i rummet ett steg framåt i rollordningen (BAKGRUND → TEXTUR → COPYWRITER → TYPSNITT → STICKERS → TECKNA → PAINTBRUSH → FOTOGRAF → CHAOS → om igen), tills alla har haft alla roller.</div>
+        <div class="hint">Begär att alla i rummet flyttar ett steg framåt i rollordningen (BAKGRUND → TEXTUR → COPYWRITER → TYPSNITT → STICKERS → TECKNA → PAINTBRUSH → FOTOGRAF → CHAOS → om igen). Alla andra måste godkänna innan det sker — man är inte klar förrän alla har haft alla roller.</div>
         <div id="roleChoiceControls">
-          <button id="chooseRole" style="width:100%">ROTERA ROLLER ETT STEG →</button>
+          <button id="chooseRole" style="width:100%">BEGÄR ROLLBYTE</button>
         </div>
       </div>
       <div id="roleTools"><div id="roleVoteStatus"></div></div>
@@ -560,15 +560,22 @@ function refreshLivePeople(){
 function activityWord(role){return ({draw:'RITAR…',copy:'SKRIVER…',font:'JUSTERAR TEXT…',texture:'JUSTERAR TEXTUR…',background:'JUSTERAR BAKGRUND…',stickers:'PLACERAR…',paint:'FORMAR DRAG…',chaos:'FÖRVRÄNGER…',photo:'JUSTERAR FOTO…'})[role]||'JOBBAR…'}
 function updateRoleLocks(){
  const me=myPerson();if(me?.role)assignedRole=me.role;
- const guidedRole=guidedCurrentRole();
- const prevRole=guidedPrevRole();
+ const mp=multiplayerActive();
+ // K/P KOLLEKTIV: the solo guided-step system (state.guided.step) and the
+ // multiplayer assignedRole system are two different ways of deciding
+ // "whose turn is it" — mixing them (as before) meant a role rotation
+ // could get silently re-locked by a stale guided step nobody was
+ // advancing anymore. In a room, assignedRole alone decides; the guided
+ // step concept doesn't apply (see updateGuidedHint).
+ const guidedRole=mp?null:guidedCurrentRole();
+ const prevRole=mp?null:guidedPrevRole();
  document.querySelectorAll('#modes button').forEach(b=>{
-  const mpOk=!multiplayerActive()||!assignedRole||b.dataset.mode===assignedRole;
+  const mpOk=!mp||!assignedRole||b.dataset.mode===assignedRole;
   const guidedOk=!guidedRole||b.dataset.mode===guidedRole||b.dataset.mode===prevRole;
   const mine=mpOk&&guidedOk;
   b.classList.toggle('locked',!mine);
   b.classList.toggle('guided-prev',!!guidedRole&&b.dataset.mode===prevRole);
-  b.classList.toggle('my-role',multiplayerActive()&&b.dataset.mode===assignedRole);
+  b.classList.toggle('my-role',mp&&b.dataset.mode===assignedRole);
  });
  updateGuidedHint();
 }
@@ -583,6 +590,15 @@ function updateGuidedHint(){
  const nextBtn=document.getElementById('guidedNext');
  const actions=document.getElementById('guidedActions');
  if(!el)return;
+ // K/P KOLLEKTIV: "GÅ VIDARE" is a solo concept (moving yourself through
+ // GUIDED_ORDER). In a room, moving forward is a group action — see the
+ // BEGÄR ROLLBYTE button in the roleTab instead — so this whole hint/
+ // button row just stays out of the way.
+ if(multiplayerActive()){
+  el.textContent='';el.classList.add('hidden');el.classList.remove('ready');
+  if(actions)actions.classList.add('hidden');
+  return;
+ }
  const guidedRole=guidedCurrentRole();
  if(!guidedRole){
   el.textContent='';el.classList.add('hidden');el.classList.remove('ready');
@@ -630,10 +646,8 @@ function showVote(v){
  st.textContent=`${v.yes}/${v.total} HAR GODKÄNT`;
  const voted=(v.voters||[]).includes(mySocketId);
  const amRequester=v.by===mySocketId;
- const roleName=ROLE_LABELS[v.role]||v.role||'ROLL';
- let text=`${v.byName||'NÅGON'} VILL HA ${roleName}`;
- if(v.targetName)text+=` · BYTER MED ${v.targetName}`;
- document.getElementById('voteText').textContent=text+` · ${v.yes}/${v.total} JA`;
+ document.getElementById('voteText').textContent=
+  `${v.byName||'NÅGON'} VILL ROTERA ALLAS ROLLER ETT STEG · ${v.yes}/${v.total} JA`;
  ov.classList.toggle('show',!amRequester&&!voted);
 }
 
@@ -4078,15 +4092,19 @@ socket.on('role-change-complete',d=>{
  updatePresence(d.participants||[]);
  const me=(d.participants||[]).find(p=>p.id===mySocketId);
  if(me)applyMyRole(me.role);
+ // K/P KOLLEKTIV: not "klar" just because someone reached CHAOS — the
+ // server only sends finished:true once the room has rotated all the way
+ // around GUIDED_ORDER, i.e. everyone has had every role at least once.
+ if(d.finished){showGuidedFinished=true;buildControls();}
 });
 
 document.getElementById('chooseRole').onclick=()=>{
  if(!multiplayerActive())return;
  primeAudio();
- socket.timeout(6000).emit('rotate-roles',{room:roomCode},(err,res)=>{
+ socket.timeout(6000).emit('request-role',{room:roomCode},(err,res)=>{
    if(err||!res?.ok){
      const st=document.getElementById('roleVoteStatus');
-     st.textContent=res?.error||'KUNDE INTE ROTERA ROLLER';
+     st.textContent=res?.error||'KUNDE INTE BEGÄRA ROLLBYTE';
      setTimeout(()=>st.textContent='',1800);
    }
  });
