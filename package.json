@@ -1,17 +1,17 @@
 {
-  "name": "kollektiv-poster-kp-v2-2",
-  "version": "5.2.0",
+  "name": "kollektiv-poster-server",
+  "version": "1.0.0",
   "private": true,
-  "description": "KOLLEKTIV / POSTER collaborative poster tool",
+  "description": "Realtids-server för KOLLEKTIV/POSTER — den kollektiva multiplayer-varianten. Separat sidoprojekt, oberoende av den server-fria soloversionen som lämnas in.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=18"
   },
   "dependencies": {
-    "express": "^4.21.2",
-    "socket.io": "^4.8.1"
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
   }
 }
