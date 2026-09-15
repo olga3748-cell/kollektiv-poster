@@ -14,7 +14,12 @@
 // Rummet räknar hur många lyckade rotationer som gjorts — man är inte
 // "klar" (och får se export/rensa-skärmen) förrän alla har hunnit
 // rotera igenom samtliga GUIDED_ORDER.length roller, inte bara när någon
-// råkar stå på CHAOS.
+// råkar stå på CHAOS. Alla i rummet hamnar på klar-skärmen automatiskt
+// samma ögonblick det händer (broadcast, inget manuellt steg).
+//
+// "AVSLUTA TIDIGARE" är en egen, separat omröstning (samma unanima
+// mönster) som låter gruppen hoppa till klar-skärmen innan de hunnit
+// rotera igenom alla roller — se request-finish/finish-vote nedan.
 
 const path = require('path');
 const http = require('http');
@@ -63,6 +68,7 @@ class Room {
     this.state = null; // opaque poster state blob, filled in by the first state-update
     this.formatVote = null; // {by, byName, size, orientation, voters:Set}
     this.roleVote = null; // {by, byName, voters:Set}
+    this.finishVote = null; // {by, byName, voters:Set} -- "avsluta tidigare"
     this.roundsCompleted = 0; // successful role rotations this room has done
     this.createdAt = Date.now();
   }
@@ -248,6 +254,10 @@ io.on('connection', (socket) => {
       cb && cb({ ok: false, error: 'En rollbytesbegäran pågår redan.' });
       return;
     }
+    if (room.finishVote) {
+      cb && cb({ ok: false, error: 'En förfrågan om att avsluta pågår redan.' });
+      return;
+    }
     const requester = room.participants.get(socket.id);
     room.roleVote = {
       by: socket.id,
@@ -271,6 +281,52 @@ io.on('connection', (socket) => {
     room.roleVote.voters.add(socket.id);
     broadcastRoleVote(room);
     resolveRoleVoteIfReady(room);
+  });
+
+  // "AVSLUTA TIDIGARE": same unanimous-vote pattern as request-role, but
+  // instead of rotating roles it just marks the room finished so everyone
+  // jumps to the export/klar screen right away.
+  socket.on('request-finish', (payload, cb) => {
+    const room = getOrNull(payload && payload.room);
+    if (!room || socket.data.room !== room.code) {
+      cb && cb({ ok: false, error: 'Du är inte i det rummet.' });
+      return;
+    }
+    if (room.roundsCompleted >= GUIDED_ORDER.length) {
+      cb && cb({ ok: false, error: 'Ni är redan klara.' });
+      return;
+    }
+    if (room.finishVote) {
+      cb && cb({ ok: false, error: 'En förfrågan om att avsluta pågår redan.' });
+      return;
+    }
+    if (room.roleVote) {
+      cb && cb({ ok: false, error: 'En rollbytesbegäran pågår redan.' });
+      return;
+    }
+    const requester = room.participants.get(socket.id);
+    room.finishVote = {
+      by: socket.id,
+      byName: (requester && requester.name) || 'NÅGON',
+      voters: new Set([socket.id]),
+    };
+    cb && cb({ ok: true });
+    broadcastFinishVote(room);
+    resolveFinishVoteIfReady(room);
+  });
+
+  socket.on('finish-vote', (payload) => {
+    const room = getOrNull(payload && payload.room);
+    if (!room || socket.data.room !== room.code || !room.finishVote) return;
+    if (payload && payload.yes === false) {
+      const p = room.participants.get(socket.id);
+      io.to(room.code).emit('finish-vote-cancelled', { byName: (p && p.name) || 'NÅGON' });
+      room.finishVote = null;
+      return;
+    }
+    room.finishVote.voters.add(socket.id);
+    broadcastFinishVote(room);
+    resolveFinishVoteIfReady(room);
   });
 
   // Format change: needs unanimous yes because it rescales the whole
@@ -327,6 +383,7 @@ io.on('connection', (socket) => {
     room.state = null;
     room.roundsCompleted = 0;
     if (room.roleVote) { room.roleVote = null; io.to(room.code).emit('role-request-cancelled', { byName: 'RENSA' }); }
+    if (room.finishVote) { room.finishVote = null; io.to(room.code).emit('finish-vote-cancelled', { byName: 'RENSA' }); }
   });
 });
 
@@ -381,6 +438,30 @@ function resolveRoleVoteIfReady(room) {
   });
 }
 
+function broadcastFinishVote(room) {
+  if (!room.finishVote) return;
+  const v = room.finishVote;
+  io.to(room.code).emit('finish-vote-request', {
+    by: v.by,
+    byName: v.byName,
+    yes: v.voters.size,
+    total: room.participants.size,
+    voters: [...v.voters],
+  });
+}
+
+function resolveFinishVoteIfReady(room) {
+  const v = room.finishVote;
+  if (!v) return;
+  if (v.voters.size < room.participants.size) return;
+  room.finishVote = null;
+  // Marking the room as having completed every rotation is exactly what
+  // "finished" means elsewhere (role-change-complete's `finished` flag) --
+  // ending early just gets there without actually rotating anyone's role.
+  room.roundsCompleted = GUIDED_ORDER.length;
+  io.to(room.code).emit('finish-early-complete', {});
+}
+
 function leaveCurrentRoom(socket) {
   const code = socket.data.room;
   if (!code) return;
@@ -400,6 +481,13 @@ function leaveCurrentRoom(socket) {
       io.to(code).emit('role-request-cancelled', { byName: 'NÅGON (LÄMNADE RUMMET)' });
     }
   }
+  if (room.finishVote) {
+    room.finishVote.voters.delete(socket.id);
+    if (room.finishVote.by === socket.id) {
+      room.finishVote = null;
+      io.to(code).emit('finish-vote-cancelled', { byName: 'NÅGON (LÄMNADE RUMMET)' });
+    }
+  }
   if (room.participants.size === 0) {
     rooms.delete(code);
     return;
@@ -407,6 +495,7 @@ function leaveCurrentRoom(socket) {
   broadcastPresence(room);
   if (room.formatVote) resolveFormatVoteIfReady(room);
   if (room.roleVote) resolveRoleVoteIfReady(room);
+  if (room.finishVote) resolveFinishVoteIfReady(room);
 }
 
 server.listen(PORT, () => {

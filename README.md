@@ -23,13 +23,29 @@ ordning: person 1 = BAKGRUND, person 2 = TEXTUR, person 3 = COPYWRITER,
 person 4 = TYPSNITT, person 5 = STICKERS, person 6 = TECKNA,
 person 7 = PAINTBRUSH, person 8 = FOTOGRAF, person 9 = CHAOS.
 
-Vem som helst kan klicka **BYT ROLL → BEGÄR ROLLBYTE**. Det skickar en
-notis till alla andra i rummet (samma ruta som dyker upp vid formatbyte),
-och *alla* måste godkänna innan något händer — säger någon nej avbryts
-begäran helt. När alla godkänt flyttas *alla* i rummet ett steg framåt i
-rollordningen på en gång. Man är inte "klar" (och får se export/rensa-
-skärmen) förrän gruppen har roterat hela vägen runt — dvs alla har haft
-alla roller minst en gång — inte bara när någon råkar stå på CHAOS.
+Vem som helst kan klicka **BEGÄR ROLLBYTE** i högerspalten (bredvid
+verktygspanelen, under "DIN ROLL"). Det skickar en notis till alla andra i
+rummet (samma ruta som dyker upp vid formatbyte), och *alla* måste godkänna
+innan något händer — säger någon nej avbryts begäran helt. När alla godkänt
+flyttas *alla* i rummet ett steg framåt i rollordningen på en gång. Man är
+inte "klar" förrän gruppen har roterat hela vägen runt — dvs alla har haft
+alla roller minst en gång — inte bara när någon råkar stå på CHAOS. Så fort
+det händer hamnar *alla* i rummet automatiskt på export/rensa-skärmen, utan
+att någon behöver klicka på något själv.
+
+Vill gruppen avsluta innan man hunnit rotera igenom alla nio rollerna finns
+**AVSLUTA TIDIGARE**, precis under BEGÄR ROLLBYTE i högerspalten. Det är
+samma sorts begäran — alla andra måste godkänna, ett nej avbryter helt — men
+istället för att flytta någons roll hoppar hela gruppen direkt till export/
+rensa-skärmen så fort alla sagt ja. Knappen försvinner automatiskt så fort
+man faktiskt är klar (det finns inget kvar att begära då) och dyker upp
+igen om man rensar och börjar om.
+
+Att klicka på en rollknapp i vänsterspalten (t.ex. "CHAOS") byter INTE
+roll — de knapparna växlar bara vilken verktygspanel man tittar på bland
+de roller man faktiskt får ha just nu (sin egen, plus ett steg bakåt för
+att kika). Det enda sättet att faktiskt byta roll är BEGÄR ROLLBYTE och
+allas godkännande.
 
 Den gamla soloflödets "GÅ VIDARE"-knapp (som flyttar bara dig själv genom
 rollerna) är avstängd i den här varianten, eftersom det inte är ett

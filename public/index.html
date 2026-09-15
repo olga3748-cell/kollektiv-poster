@@ -169,6 +169,10 @@ nav.rail{
 #roleTools{margin-top:8px}
 #roleVoteStatus{font-size:10.5px;color:var(--ink-dim);min-height:13px}
 
+#finishChoice{margin-top:14px;padding-top:14px;border-top:1px solid var(--hair)}
+#finishChoiceControls{display:grid;gap:5px}
+#finishStatus{font-size:10.5px;color:var(--ink-dim);min-height:13px;margin-top:8px}
+
 #formatControls{display:grid;grid-template-columns:1fr 1fr;gap:5px}
 #requestFormat{grid-column:1/-1}
 #formatStatus{font-size:10.5px;color:var(--ink-dim);margin-top:6px;min-height:12px}
@@ -231,10 +235,10 @@ aside.panel{
 .role-tag{font-size:9px;color:var(--role);letter-spacing:.14em;margin:5px 0 2px}
 
 /* ---------- overlays / lobby: same paper language, kept as modals ---------- */
-#voteOverlay,#formatVoteOverlay,#cameraOverlay{
+#voteOverlay,#formatVoteOverlay,#finishVoteOverlay,#cameraOverlay{
   position:fixed;inset:0;background:rgba(255,255,255,.92);z-index:9000;display:none;place-items:center;
 }
-#voteOverlay.show,#formatVoteOverlay.show,#cameraOverlay.show{display:grid}
+#voteOverlay.show,#formatVoteOverlay.show,#finishVoteOverlay.show,#cameraOverlay.show{display:grid}
 .modal-card{width:min(440px,92vw);background:var(--paper);border:1px solid var(--line);padding:16px;box-shadow:none}
 .modal-card h2{margin:0 0 8px;border-top:0;padding-top:0}
 #cameraVideo{width:100%;max-height:60vh;background:#000;object-fit:contain;margin:8px 0}
@@ -352,22 +356,6 @@ aside.panel{
       </div>
     </div>
 
-    <!-- K/P V3: synlig men avstängd i den här versionen — se
-         button:disabled i stilmallen. Native disabled gör att klick
-         aldrig når rail-tab-toggle-lyssnaren, så fliken kan inte öppnas. -->
-    <button class="rail-item rail-tab-toggle" data-tab-target="roleTab">
-      <span>BYT ROLL<span class="rail-note"> · kollektivt</span></span><span class="arrow">▾</span>
-    </button>
-    <div class="rail-tab hidden" id="roleTab">
-      <div id="roleChoice" class="hidden">
-        <div class="hint">Begär att alla i rummet flyttar ett steg framåt i rollordningen (BAKGRUND → TEXTUR → COPYWRITER → TYPSNITT → STICKERS → TECKNA → PAINTBRUSH → FOTOGRAF → CHAOS → om igen). Alla andra måste godkänna innan det sker — man är inte klar förrän alla har haft alla roller.</div>
-        <div id="roleChoiceControls">
-          <button id="chooseRole" style="width:100%">BEGÄR ROLLBYTE</button>
-        </div>
-      </div>
-      <div id="roleTools"><div id="roleVoteStatus"></div></div>
-    </div>
-
     <button class="rail-item rail-tab-toggle" data-tab-target="formatTab">
       <span>BYT FORMAT</span><span class="arrow">▾</span>
     </button>
@@ -408,6 +396,28 @@ aside.panel{
   <aside class="panel">
     <div id="simpleRoleHeader">DIN ROLL</div>
     <div id="simpleRoleName">—</div>
+    <!-- K/P KOLLEKTIV: flyttad hit från vänsterrailens "BYT ROLL"-flik på
+         användarens begäran — mer synlig bredvid rollnamnet/verktygspanelen
+         istället för gömd bakom en till-flik man måste öppna själv. -->
+    <div id="roleChoice" class="hidden">
+      <div class="hint">Begär att alla i rummet flyttar ett steg framåt i rollordningen (BAKGRUND → TEXTUR → COPYWRITER → TYPSNITT → STICKERS → TECKNA → PAINTBRUSH → FOTOGRAF → CHAOS → om igen). Alla andra måste godkänna innan det sker — man är inte klar förrän alla har haft alla roller.</div>
+      <div id="roleChoiceControls">
+        <button id="chooseRole" style="width:100%">BEGÄR ROLLBYTE</button>
+      </div>
+      <div id="roleTools"><div id="roleVoteStatus"></div></div>
+    </div>
+    <!-- K/P KOLLEKTIV: "avsluta tidigare" — en egen omröstning, samma
+         mönster som BEGÄR ROLLBYTE/BEGÄR FORMATBYTE, som hoppar direkt till
+         export-skärmen utan att vänta på att alla nio rollerna roterats
+         igenom. Döljs automatiskt så fort man faktiskt är klar (se
+         updateRoleChoice()). -->
+    <div id="finishChoice" class="hidden">
+      <div class="hint">Vill ni avsluta redan nu, innan alla hunnit ha alla roller? Alla andra måste godkänna — då hoppar hela gruppen direkt till export/rensa-skärmen.</div>
+      <div id="finishChoiceControls">
+        <button id="chooseFinish" style="width:100%">AVSLUTA TIDIGARE</button>
+      </div>
+      <div id="finishStatus"></div>
+    </div>
     <div id="guidedHint" class="hint hidden"></div>
     <div id="guidedActions" class="grid hidden">
       <button id="guidedBack" class="hidden" type="button"></button>
@@ -435,6 +445,14 @@ aside.panel{
   <div class="grid" style="margin-top:10px">
     <button id="formatVoteYes">JA</button>
     <button id="formatVoteNo" class="danger">NEJ</button>
+  </div>
+</div></div>
+<div id="finishVoteOverlay"><div class="modal-card">
+  <h2>AVSLUTA TIDIGARE?</h2>
+  <div id="finishVoteText" class="hint">Alla måste godkänna. Ett NEJ avbryter.</div>
+  <div class="grid" style="margin-top:10px">
+    <button id="finishVoteYes">JA</button>
+    <button id="finishVoteNo" class="danger">NEJ</button>
   </div>
 </div></div>
 <div id="cameraOverlay"><div class="modal-card">
@@ -481,7 +499,7 @@ let ctx=C.getContext('2d');
 let W=C.width,H=C.height;
 const socket=io();
 let roomCode=null,mySocketId=null,applyingRemote=false,syncTimer=null,lastSentJSON='',participants=[];
-let assignedRole=null,currentVote=null,currentFormatVote=null,audioCtx=null,cameraStream=null,drawTool='pen',erasing=false,pendingAssignedRole=null;
+let assignedRole=null,currentVote=null,currentFormatVote=null,currentFinishVote=null,audioCtx=null,cameraStream=null,drawTool='pen',erasing=false,pendingAssignedRole=null;
 // V11: LJUD — small Web Audio cues sprinkled through the app (see
 // primeAudio/voteSound/chatSound above, extended just below), all gated by
 // this one on/off switch so the whole app can be muted from the header.
@@ -604,8 +622,8 @@ function updateGuidedHint(){
  if(!el)return;
  // K/P KOLLEKTIV: "GÅ VIDARE" is a solo concept (moving yourself through
  // GUIDED_ORDER). In a room, moving forward is a group action — see the
- // BEGÄR ROLLBYTE button in the roleTab instead — so this whole hint/
- // button row just stays out of the way.
+ // BEGÄR ROLLBYTE button (in the right-hand panel, #roleChoice) instead —
+ // so this whole hint/button row just stays out of the way.
  if(multiplayerActive()){
   el.textContent='';el.classList.add('hidden');el.classList.remove('ready');
   if(actions)actions.classList.add('hidden');
@@ -671,6 +689,22 @@ function showVote(v){
  ov.classList.toggle('show',!amRequester&&!voted);
 }
 
+// K/P KOLLEKTIV: "avsluta tidigare" — samma unanima omröstningsmönster som
+// showVote()/showFormatVote(), egen overlay/status så den inte krockar med
+// en pågående rollbytesbegäran.
+function showFinishVote(v){
+ currentFinishVote=v||null;
+ const ov=document.getElementById('finishVoteOverlay'),st=document.getElementById('finishStatus');
+ if(!ov)return;
+ if(!v){ov.classList.remove('show');if(st)st.textContent='';return}
+ if(st)st.textContent=`${v.yes}/${v.total} HAR GODKÄNT`;
+ const voted=(v.voters||[]).includes(mySocketId);
+ const amRequester=v.by===mySocketId;
+ document.getElementById('finishVoteText').textContent=
+  `${v.byName||'NÅGON'} VILL AVSLUTA OCH GÅ TILL EXPORT NU · ${v.yes}/${v.total} JA`;
+ ov.classList.toggle('show',!amRequester&&!voted);
+}
+
 function scheduleRoomSync(){
  if(!multiplayerActive()||applyingRemote)return;
  clearTimeout(syncTimer);
@@ -683,8 +717,12 @@ function scheduleRoomSync(){
 }
 function updateRoleChoice(){
  const box=document.getElementById('roleChoice');
- if(!box)return;
- box.classList.toggle('hidden', !(multiplayerActive() && participants.length>0));
+ if(box)box.classList.toggle('hidden', !(multiplayerActive() && participants.length>0));
+ // K/P KOLLEKTIV: "avsluta tidigare" only makes sense before the group has
+ // actually reached the finished/export screen — once showGuidedFinished
+ // is true there's nothing left to request.
+ const finishBox=document.getElementById('finishChoice');
+ if(finishBox)finishBox.classList.toggle('hidden', !(multiplayerActive() && participants.length>0 && !showGuidedFinished));
 }
 function updatePresence(list=[]){
  participants=list;
@@ -4134,7 +4172,9 @@ socket.on('role-change-complete',d=>{
  // K/P KOLLEKTIV: not "klar" just because someone reached CHAOS — the
  // server only sends finished:true once the room has rotated all the way
  // around GUIDED_ORDER, i.e. everyone has had every role at least once.
- if(d.finished){showGuidedFinished=true;buildControls();}
+ // Everyone in the room gets this same broadcast, so this switches
+ // everyone to the export/klar screen automatically, with no manual step.
+ if(d.finished){showGuidedFinished=true;buildControls();updateRoleChoice();}
 });
 
 document.getElementById('chooseRole').onclick=()=>{
@@ -4148,6 +4188,43 @@ document.getElementById('chooseRole').onclick=()=>{
    }
  });
 };
+
+// K/P KOLLEKTIV: "avsluta tidigare" — begär att hela gruppen hoppar
+// direkt till export/klar-skärmen utan att vänta på alla nio rollerna.
+// Samma unanima godkännande-mönster som BEGÄR ROLLBYTE/BEGÄR FORMATBYTE.
+document.getElementById('chooseFinish').onclick=()=>{
+ if(!multiplayerActive())return;
+ primeAudio();
+ socket.timeout(6000).emit('request-finish',{room:roomCode},(err,res)=>{
+   if(err||!res?.ok){
+     const st=document.getElementById('finishStatus');
+     st.textContent=res?.error||'KUNDE INTE BEGÄRA ATT AVSLUTA';
+     setTimeout(()=>st.textContent='',1800);
+   }
+ });
+};
+document.getElementById('finishVoteYes').onclick=()=>{
+ if(currentFinishVote)socket.emit('finish-vote',{room:roomCode,yes:true});
+ document.getElementById('finishVoteOverlay').classList.remove('show');
+};
+document.getElementById('finishVoteNo').onclick=()=>{
+ if(currentFinishVote)socket.emit('finish-vote',{room:roomCode,yes:false});
+ document.getElementById('finishVoteOverlay').classList.remove('show');
+};
+socket.on('finish-vote-request',v=>{showFinishVote(v);if(v.by!==mySocketId)voteSound()});
+socket.on('finish-vote-state',showFinishVote);
+socket.on('finish-vote-cancelled',d=>{
+ showFinishVote(null);
+ const st=document.getElementById('finishStatus');
+ st.textContent=(d?.byName||'NÅGON')+' SA NEJ';
+ setTimeout(()=>st.textContent='',1600);
+});
+socket.on('finish-early-complete',()=>{
+ showFinishVote(null);
+ showGuidedFinished=true;
+ buildControls();
+ updateRoleChoice();
+});
 
 document.getElementById('createRoom').onclick=()=>{
  primeAudio();
@@ -4536,7 +4613,19 @@ function soloInit(){
   }
  }catch(e){}
  normalizeState();applyCanvasFormat();hydratePhotos();
- document.querySelectorAll('#modes button').forEach(b=>b.onclick=()=>{showGuidedFinished=false;setMode(b.dataset.mode,true)});
+ // K/P KOLLEKTIV: THE ACTUAL BUG behind "man kan byta roll när man vill".
+ // This rebinding runs on window 'load', AFTER the earlier, correctly
+ // role-gated #modes-button wiring further up the file — onclick=
+ // assignment replaces the previous handler outright, so whichever one
+ // ran last wins. The original solo file always passes force=true here
+ // (deliberate: in solo mode there's no lock to bypass, only the
+ // guided-step peek). Carrying that same force=true into the multiplayer
+ // build meant EVERY click on a mode-bar button skipped the
+ // assignedRole check in setMode() entirely (`!force` is false), so
+ // anyone could jump straight into any role's toolbox at any time,
+ // vote or no vote. force must only be unconditional in solo mode; in a
+ // room the assignedRole lock has to stay in force.
+ document.querySelectorAll('#modes button').forEach(b=>b.onclick=()=>{showGuidedFinished=false;setMode(b.dataset.mode,!multiplayerActive())});
  loadTakes();
  renderTakesGallery();
  document.getElementById('saveTake').onclick=()=>saveTakeNow();
@@ -4552,6 +4641,7 @@ function soloInit(){
   selectedSticker=-1;selectedText=-1;selectedPhoto=-1;selectedTexture=-1;drawing=false;activeStroke=null;erasing=false;
   applyCanvasFormat();saveLocal();updateSystemBar();
   showGuidedFinished=false;
+  updateRoleChoice();
   setMode(guidedCurrentRole()||'background',true);
   if(multiplayerActive())socket.emit('reset-room',{room:roomCode});
  };
