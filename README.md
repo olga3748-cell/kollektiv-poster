@@ -34,12 +34,12 @@ det händer hamnar *alla* i rummet automatiskt på export/rensa-skärmen, utan
 att någon behöver klicka på något själv.
 
 Vill gruppen avsluta innan man hunnit rotera igenom alla nio rollerna finns
-**AVSLUTA TIDIGARE**, precis under BEGÄR ROLLBYTE i högerspalten. Det är
-samma sorts begäran — alla andra måste godkänna, ett nej avbryter helt — men
-istället för att flytta någons roll hoppar hela gruppen direkt till export/
-rensa-skärmen så fort alla sagt ja. Knappen försvinner automatiskt så fort
-man faktiskt är klar (det finns inget kvar att begära då) och dyker upp
-igen om man rensar och börjar om.
+**AVSLUTA TIDIGARE** under "interagera" i vänsterspalten (bredvid CHATT/BYT
+FORMAT). Det är samma sorts begäran — alla andra måste godkänna, ett nej
+avbryter helt — men istället för att flytta någons roll hoppar hela gruppen
+direkt till export/rensa-skärmen så fort alla sagt ja. Innehållet i fliken
+försvinner automatiskt så fort man faktiskt är klar (det finns inget kvar
+att begära då) och dyker upp igen om man rensar och börjar om.
 
 Att klicka på en rollknapp i vänsterspalten (t.ex. "CHAOS") byter INTE
 roll — de knapparna växlar bara vilken verktygspanel man tittar på bland
@@ -68,6 +68,39 @@ så fort man öppnar fliken.
 Under chatten finns två knappar, **POSITIVT LJUD** och **NEGATIVT LJUD**,
 som skickar en ljudsignal till alla i rummet direkt (utan text) — bra för
 snabb feedback utan att skriva något.
+
+## CHAOS · tre nya effekter
+
+CHAOS hade nio effekter (WARP, MELT, RIPPLE, BLÄCKBLÖDNING, GLITCH, PIXEL,
+ECHO, DUBBELEXPONERING, VÄV) — nu finns tre till, under en egen rubrik
+"KAOS · SÄRSKILT" i panelen, var och en med ett helt annat sätt att
+förvränga postern på än de nio gamla:
+
+- **FÄRGSPLIT** — drar isär bildens röd-, grön- och blåkanal åt olika håll
+  (kromatisk aberration), så kanter får färgade kanter istället för att
+  hela bilden bara flyttar sig.
+- **VIRVEL** — vrider postern i en virvel runt mittpunkten, mer vridning
+  närmare mitten än ute vid kanten.
+- **SPEGEL** — riktig spegelvänd symmetri: högra halvan speglas tillbaka
+  över den vänstra (styrkan avgör hur mycket den blandas med originalet),
+  till skillnad från alla andra effekter som bara flyttar/upprepar/
+  färgar om samma siluett.
+
+Alla tre fungerar precis som de gamla nio — ett reglage per lager
+(HELA POSTERN/BAKGRUND/STICKER/TEXT/FOTO/TECKNING), och REMIX-knappen
+kan slumpa fram dem precis som alla andra effekter.
+
+## PAINTBRUSH / METALL
+
+METALL-materialet (flytande metall-penseln under PAINTBRUSH) är gjord
+blankare — starkare kontrast mellan ljus och skugga, och en tydligare,
+skarpare glansprick längs varje drag. Tidigare kunde tunna drag (låg
+GRUNDSTORLEK) nästan försvinna helt eftersom oskärpan som får näraliggande
+drag att smälta ihop var en fast storlek oavsett penseltjocklek — ett tunt
+drag suddades i praktiken bort innan det hann bli synligt igen. Oskärpan
+skalar nu efter det tunnaste aktuella draget, så METALL syns tydligt även
+på den lägsta penseltjockleken, medan tjocka drag fortfarande smälter ihop
+precis som innan.
 
 ## Köra lokalt
 

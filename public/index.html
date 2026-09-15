@@ -169,7 +169,6 @@ nav.rail{
 #roleTools{margin-top:8px}
 #roleVoteStatus{font-size:10.5px;color:var(--ink-dim);min-height:13px}
 
-#finishChoice{margin-top:14px;padding-top:14px;border-top:1px solid var(--hair)}
 #finishChoiceControls{display:grid;gap:5px}
 #finishStatus{font-size:10.5px;color:var(--ink-dim);min-height:13px;margin-top:8px}
 
@@ -374,6 +373,27 @@ aside.panel{
       <div id="formatStatus"></div>
     </div>
 
+    <!-- K/P KOLLEKTIV: "avsluta tidigare" — flyttad hit till vänsterrailens
+         "interagera"-grupp på användarens begäran (bredvid CHATT/BYT
+         FORMAT), separat från BEGÄR ROLLBYTE som ligger kvar i
+         högerspalten. Samma unanima omröstningsmönster som BEGÄR
+         ROLLBYTE/BEGÄR FORMATBYTE — hoppar direkt till export-skärmen utan
+         att vänta på att alla nio rollerna roterats igenom. Innehållet
+         döljs automatiskt så fort man faktiskt är klar (se
+         updateRoleChoice()). -->
+    <button class="rail-item rail-tab-toggle" data-tab-target="finishTab">
+      <span>AVSLUTA TIDIGARE</span><span class="arrow">▾</span>
+    </button>
+    <div class="rail-tab hidden" id="finishTab">
+      <div id="finishChoice" class="hidden">
+        <div class="hint">Vill ni avsluta redan nu, innan alla hunnit ha alla roller? Alla andra måste godkänna — då hoppar hela gruppen direkt till export/rensa-skärmen.</div>
+        <div id="finishChoiceControls">
+          <button id="chooseFinish" style="width:100%">AVSLUTA TIDIGARE</button>
+        </div>
+        <div id="finishStatus"></div>
+      </div>
+    </div>
+
     <div class="rail-label">sparat</div>
     <button id="saveTake">◉ Spara take</button>
     <div id="takesGallery" class="takes-gallery"></div>
@@ -405,18 +425,6 @@ aside.panel{
         <button id="chooseRole" style="width:100%">BEGÄR ROLLBYTE</button>
       </div>
       <div id="roleTools"><div id="roleVoteStatus"></div></div>
-    </div>
-    <!-- K/P KOLLEKTIV: "avsluta tidigare" — en egen omröstning, samma
-         mönster som BEGÄR ROLLBYTE/BEGÄR FORMATBYTE, som hoppar direkt till
-         export-skärmen utan att vänta på att alla nio rollerna roterats
-         igenom. Döljs automatiskt så fort man faktiskt är klar (se
-         updateRoleChoice()). -->
-    <div id="finishChoice" class="hidden">
-      <div class="hint">Vill ni avsluta redan nu, innan alla hunnit ha alla roller? Alla andra måste godkänna — då hoppar hela gruppen direkt till export/rensa-skärmen.</div>
-      <div id="finishChoiceControls">
-        <button id="chooseFinish" style="width:100%">AVSLUTA TIDIGARE</button>
-      </div>
-      <div id="finishStatus"></div>
     </div>
     <div id="guidedHint" class="hint hidden"></div>
     <div id="guidedActions" class="grid hidden">
@@ -848,7 +856,7 @@ const TEXTURE_META=Object.fromEntries(TEXTURE_KINDS.map(([k,label,fam,hint])=>[k
 // swapped out for DUBBELEXPONERING (double exposure), BLÄCKBLÖDNING (ink
 // bleed) and VÄV (interlaced weave) — see chaosTransform. PIXEL was dropped
 // in that same pass but brought back in V9 on request.
-const CHAOS_KEYS=['glitch','warp','melt','ripple','echo','pixel','dubbel','blod','vav'];
+const CHAOS_KEYS=['glitch','warp','melt','ripple','echo','pixel','dubbel','blod','vav','split','virvel','spegel'];
 function zeroChaosLayer(){return Object.fromEntries(CHAOS_KEYS.map(k=>[k,0]))}
 // V11: REMIX — a one-click alternative to hand-tuning every slider. Instead
 // of a flat wash of every effect at once (which tends to just look like
@@ -1902,7 +1910,20 @@ function renderMergedPaintStrokes(strokes){
  // the exported file than in the live editor. paintRes corrects for that so
  // the blur stays the same proportion of the mask at any resolution.
  const paintRes=W/794;
- const blurR=Math.max(1,Math.round((shiny?5:3)*paintRes)), blurPasses=shiny?2:1;
+ // K/P KOLLEKTIV: thin PAINTBRUSH strokes (low STORLEK) were nearly
+ // invisible in METALL — this blur radius used to be a FIXED pixel count
+ // no matter how thin the actual stroke was, so a thin stroke's peak
+ // alpha got smeared out well below the body/rim/shadow cutoffs below and
+ // contrastAlphaPaint's re-hardening step had nothing left to threshold
+ // back up to — the stroke just vanished. Capping the radius (and, for
+ // METALL, the extra blur pass) to the mask-space width of the THINNEST
+ // stroke currently in the merge keeps the gooey blend for normal/thick
+ // strokes while stopping thin ones from being blurred away entirely.
+ const minRealWidth=Math.min(...valid.map(({g})=>g.reduce((s,p)=>s+p.w,0)/g.length));
+ const minMaskWidth=Math.max(1,minRealWidth*PAINT_MASK_SCALE);
+ const desiredBlurR=Math.round((shiny?5:3)*paintRes);
+ const blurR=Math.max(1,Math.min(desiredBlurR,Math.round(minMaskWidth*.45)));
+ const blurPasses=(shiny&&blurR>=desiredBlurR)?2:1;
  for(let p=0;p<blurPasses;p++){
   boxBlurAlphaPass(blurred.data,mw,mh,blurR,true);
   boxBlurAlphaPass(blurred.data,mw,mh,blurR,false);
@@ -1944,8 +1965,11 @@ function renderMergedPaintStrokes(strokes){
   // brush's own color (shineTint) instead of plain white — a red stroke
   // gets a warm pinkish shine, a blue stroke a cool pale-blue shine, etc.,
   // rather than every color looking like the same generic chrome.
-  const hi=mixWhitePaint(base,.78), lo=mixBlackPaint(base,.66);
-  const shineTint=mixWhitePaint(base,.80);
+  // K/P KOLLEKTIV: pushed the light/dark contrast and highlight strength
+  // further on user request ("mer glossy och shiny") — brighter highs,
+  // darker lows, a slightly bigger/brighter core hotspot below.
+  const hi=mixWhitePaint(base,.86), lo=mixBlackPaint(base,.74);
+  const shineTint=mixWhitePaint(base,.87);
   const gx0=cx+Math.cos(PAINT_LIGHT_ANGLE)*r,gy0=cy+Math.sin(PAINT_LIGHT_ANGLE)*r;
   const gx1=cx-Math.cos(PAINT_LIGHT_ANGLE)*r,gy1=cy-Math.sin(PAINT_LIGHT_ANGLE)*r;
   const grad=sctx.createLinearGradient(gx0,gy0,gx1,gy1);
@@ -1974,16 +1998,16 @@ function renderMergedPaintStrokes(strokes){
    g.forEach((p,i)=>{
     const t=n>1?i/(n-1):.5, w=p.w;
     const hx=p.x+Math.cos(PAINT_LIGHT_ANGLE)*w*.18,hy=p.y+Math.sin(PAINT_LIGHT_ANGLE)*w*.18;
-    const hr=Math.max(3,w*.58);
+    const hr=Math.max(3,w*.62);
     const hg=sctx.createRadialGradient(hx,hy,0,hx,hy,hr);
-    hg.addColorStop(0,rgbStrPaint(shineTint,0.56));
-    hg.addColorStop(.55,rgbStrPaint(shineTint,0.20));
+    hg.addColorStop(0,rgbStrPaint(shineTint,0.68));
+    hg.addColorStop(.55,rgbStrPaint(shineTint,0.28));
     hg.addColorStop(1,rgbStrPaint(shineTint,0));
     sctx.fillStyle=hg; sctx.beginPath();sctx.arc(hx,hy,hr,0,Math.PI*2);sctx.fill();
    });
   });
 
-  const coreLayers=[{k:.34,a:.13},{k:.24,a:.18},{k:.16,a:.24},{k:.10,a:.32},{k:.055,a:.44},{k:.028,a:.58}];
+  const coreLayers=[{k:.34,a:.15},{k:.24,a:.21},{k:.16,a:.29},{k:.10,a:.40},{k:.055,a:.55},{k:.028,a:.72},{k:.013,a:.88}];
   valid.forEach(({g})=>{
    const n=g.length, linePts=[];
    g.forEach((p,i)=>{
@@ -3482,6 +3506,75 @@ function chaosTransform(sourceCanvas,vals){
    swap();
  }
 
+ // K/P KOLLEKTIV: three new effect types, on user request — a different
+ // underlying mechanic each, not just variations on the sine-wave-shift
+ // technique the nine above already share.
+
+ // FÄRGSPLIT — chromatic aberration: pulls the red/green/blue channels of
+ // the image sideways by different amounts, so edges fringe with colour
+ // instead of the whole picture moving together. Each channel is isolated
+ // by multiplying the source against a pure R/G/B fill (multiply zeroes
+ // the other two channels, leaves that one untouched), then the three
+ // shifted, isolated channels are added back together with 'screen'.
+ if(c.split>0){
+   const d=clearDst(),strength=c.split/100;
+   const off=6+strength*54;
+   const isolate=color=>{
+     const t=document.createElement('canvas');t.width=Wc;t.height=Hc;
+     const tc=t.getContext('2d');
+     tc.drawImage(src,0,0);
+     tc.globalCompositeOperation='multiply';
+     tc.fillStyle=color;tc.fillRect(0,0,Wc,Hc);
+     return t;
+   };
+   const rC=isolate('#ff0000'),gC=isolate('#00ff00'),bC=isolate('#0000ff');
+   d.globalCompositeOperation='screen';
+   d.drawImage(rC,-off,off*.18);
+   d.drawImage(gC,0,-off*.12);
+   d.drawImage(bC,off,off*.05);
+   d.globalCompositeOperation='source-over';
+   swap();
+ }
+
+ // VIRVEL — a radial swirl around the poster's centre: concentric rings
+ // are each rotated by their own angle (more twist closer to the centre),
+ // approximating a true polar-coordinate vortex with plain drawImage
+ // calls the same way MELT approximates a drip with vertical columns.
+ if(c.virvel>0){
+   const d=clearDst(),strength=c.virvel/100;
+   d.drawImage(src,0,0);
+   const cx=Wc/2,cy=Hc/2,maxR=Math.hypot(Wc,Hc)/2,rings=28;
+   for(let i=rings;i>=1;i--){
+     const r0=maxR*(i-1)/rings,r1=maxR*i/rings;
+     const t=1-(i-.5)/rings; // 0 at the outer edge, ~1 near the centre
+     const angle=t*t*strength*3.3;
+     d.save();
+     d.beginPath();
+     d.arc(cx,cy,r1,0,Math.PI*2);
+     d.arc(cx,cy,r0,0,Math.PI*2,true);
+     d.clip('evenodd');
+     d.translate(cx,cy);d.rotate(angle);d.translate(-cx,-cy);
+     d.drawImage(src,0,0);
+     d.restore();
+   }
+   swap();
+ }
+
+ // SPEGEL — true bilateral symmetry: the right half is mirrored back over
+ // the left half (blended by strength), unlike every effect above which
+ // keeps the original silhouette and only displaces/repeats/recolours it.
+ if(c.spegel>0){
+   const d=clearDst(),strength=c.spegel/100;
+   d.drawImage(src,0,0);
+   d.save();
+   d.beginPath();d.rect(0,0,Wc/2,Hc);d.clip();
+   d.globalAlpha=strength;
+   d.translate(Wc,0);d.scale(-1,1);
+   d.drawImage(src,0,0);
+   d.restore();
+   swap();
+ }
+
  const out=document.createElement('canvas');out.width=W;out.height=H;
  out.getContext('2d').drawImage(src,edge,edge,W,H,0,0,W,H);
  if(!needsRescale)return out;
@@ -3555,7 +3648,7 @@ document.querySelectorAll('#modes button').forEach(b=>b.onclick=()=>{showGuidedF
 
 function neutralValue(key,obj,min,max){
  if(key==='h'||key==='w'||key==='sx'||key==='sy')return 1;
- if(['skew','rot','shadow','organic','swell','twist','sticky','jagged','glitch','warp','melt','echo','ripple','pixel','dubbel','blod','vav','tintAmount','distortX','distortY','angle'].includes(key))return 0;
+ if(['skew','rot','shadow','organic','swell','twist','sticky','jagged','glitch','warp','melt','echo','ripple','pixel','dubbel','blod','vav','split','virvel','spegel','tintAmount','distortX','distortY','angle'].includes(key))return 0;
  if(key==='opacity')return 100;
  if(key==='x')return W/2;
  if(key==='y')return H/2;
@@ -3654,7 +3747,7 @@ ${slider('TAGGIG',state.paint,'jagged',0,100)}
   s=`<h2>LAGER</h2>${chaosTargetControls()}<div class="hint">Varje lager — HELA POSTERN, BAKGRUND, STICKER, TEXT, FOTO, TECKNING — har sitt eget kaos, och alla gäller samtidigt. Du redigerar just nu: <b>${editingLabel}</b>. ${editingHint} (● = det lagret har redan kaos på sig.)</div>
   <button id="chaosRemix" style="width:100%;margin-top:4px">REMIX DETTA LAGER</button>
   <div class="hint">Slumpar ett nytt, oväntat kaos för <b>${editingLabel}</b> — testa gärna flera gånger tills något känns rätt.</div>
-  <h2>KAOS · ORGANISKT</h2>${slider('WARP',layerVals,'warp')}${slider('MELT',layerVals,'melt')}${slider('RIPPLE',layerVals,'ripple')}${slider('BLÄCKBLÖDNING',layerVals,'blod')}<h2>KAOS · STRUKTUR</h2>${slider('GLITCH',layerVals,'glitch')}${slider('PIXEL',layerVals,'pixel')}${slider('ECHO',layerVals,'echo')}${slider('DUBBELEXPONERING',layerVals,'dubbel')}${slider('VÄV',layerVals,'vav')}<div class="hint">Effekten ligger kvar även när du byter arbetsläge. Vill du inte ha något kaos alls, lämna bara allt på 0${guidedCurrentRole()==='chaos'?' — eller hoppa över nedan':''}.</div><div class="grid" style="margin-top:10px">
+  <h2>KAOS · ORGANISKT</h2>${slider('WARP',layerVals,'warp')}${slider('MELT',layerVals,'melt')}${slider('RIPPLE',layerVals,'ripple')}${slider('BLÄCKBLÖDNING',layerVals,'blod')}<h2>KAOS · STRUKTUR</h2>${slider('GLITCH',layerVals,'glitch')}${slider('PIXEL',layerVals,'pixel')}${slider('ECHO',layerVals,'echo')}${slider('DUBBELEXPONERING',layerVals,'dubbel')}${slider('VÄV',layerVals,'vav')}<h2>KAOS · SÄRSKILT</h2>${slider('FÄRGSPLIT',layerVals,'split')}${slider('VIRVEL',layerVals,'virvel')}${slider('SPEGEL',layerVals,'spegel')}<div class="hint">Effekten ligger kvar även när du byter arbetsläge. Vill du inte ha något kaos alls, lämna bara allt på 0${guidedCurrentRole()==='chaos'?' — eller hoppa över nedan':''}.</div><div class="grid" style="margin-top:10px">
 <button id="chaosNormal">NOLLSTÄLL DETTA LAGER</button>
 <button id="chaosMax">DETTA LAGER · 100</button>
 </div>${skipBtn}`;
