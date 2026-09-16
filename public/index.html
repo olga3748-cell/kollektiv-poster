@@ -11,7 +11,7 @@
      see the fonts[] list in TYPSNITT controls and the font-loading note near
      document.fonts below (canvas text needs the font file actually loaded,
      not just the stylesheet linked, or it silently falls back). -->
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Space+Mono:wght@400;700&family=Permanent+Marker&family=Comic+Neue:wght@400;700&family=Caveat:wght@400;700&family=Press+Start+2P&family=UnifrakturMaguntia&family=Fascinate&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Space+Mono:wght@400;700&family=Permanent+Marker&family=Comic+Neue:wght@400;700&family=Caveat:wght@400;700&family=Press+Start+2P&family=UnifrakturMaguntia&family=Fascinate&family=Dancing+Script:wght@400;700&display=swap" rel="stylesheet">
 <!-- K/P V3: jsPDF for the "spara som pdf" button on the guided-flow finish
      screen — see exportPdf() near the PNG export handler. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -198,7 +198,30 @@ main.stage{
   display:block;height:min(96vh,1080px);width:auto;max-width:100%;
   background:#fff;cursor:crosshair;touch-action:none;
   border:0;box-shadow:none;
+  transform-origin:center center;
 }
+/* K/P KOLLEKTIV: local zoom/pan on the canvas -- purely a CSS transform on
+   this one client's view, never touches W/H or state, so it can't affect
+   what anyone else sees or what gets exported (exportAtScale renders off
+   this same #canvas element but never reads .style.transform). */
+#viewZoomControls{
+  position:absolute;right:14px;bottom:14px;z-index:20;
+  display:flex;align-items:center;gap:0;
+  background:var(--paper);border:1px solid var(--line);
+  box-shadow:0 1px 3px rgba(0,0,0,.15);
+}
+#viewZoomControls button{
+  border:0;background:none;width:32px;height:30px;padding:0;
+  font-size:15px;line-height:1;cursor:pointer;
+}
+#viewZoomControls button:hover{background:var(--paper-2)}
+#viewZoomPct{
+  font-size:11px;min-width:42px;text-align:center;
+  border-left:1px solid var(--line);border-right:1px solid var(--line);
+  height:30px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;
+}
+body.poster-only #viewZoomControls{display:none}
 #posterView{
   position:absolute;right:14px;top:14px;z-index:20;
   background:var(--paper);border:1px solid var(--line);
@@ -403,7 +426,6 @@ aside.panel{
          binds direkt till dessa exakta element vid sidladdning. Den nya
          skärmens knappar triggar dem programmatiskt (.click()). -->
     <button id="export" class="hidden">Exportera png</button>
-    <button id="reset" class="hidden">Rensa</button>
 
     <div id="signature">KOLLEKTIV / POSTER<br>K/P · KOLLEKTIV VERSION</div>
   </nav>
@@ -411,6 +433,15 @@ aside.panel{
   <main class="stage" id="stage">
     <button id="posterView">VISA POSTER</button>
     <canvas id="canvas" width="600" height="900"></canvas>
+    <!-- K/P KOLLEKTIV: local-only zoom/pan -- scroll/trackpad-drag to pan,
+         ctrl/cmd+scroll (or pinch) to zoom, these buttons as a touch-
+         friendly fallback. Affects only this viewer's own screen, see the
+         #canvas CSS comment above. -->
+    <div id="viewZoomControls" title="Zooma (påverkar bara din egen vy)">
+      <button id="viewZoomOut" type="button" aria-label="Zooma ut">−</button>
+      <span id="viewZoomPct" title="Återställ zoom">100%</span>
+      <button id="viewZoomIn" type="button" aria-label="Zooma in">+</button>
+    </div>
   </main>
 
   <aside class="panel">
@@ -433,9 +464,11 @@ aside.panel{
     </div>
     <div id="controls"></div>
     <!-- K/P V3: alltid synlig, oavsett var i det guidade flödet man är —
-         inte bara på klar-skärmen efter CHAOS. Delar performFullReset()
-         (definierad i soloInit()) med rensa/börja om där. -->
-    <button id="anytimeReset" class="danger" type="button" style="width:100%;margin-top:14px">börja om från bakgrund</button>
+         inte bara på klar-skärmen efter CHAOS. Detta är den ENDA
+         rensa/börja om-knappen i hela appen (performFullReset(),
+         definierad i soloInit()) — tidigare fanns tre olika knappar som
+         alla gjorde exakt samma sak. -->
+    <button id="anytimeReset" class="danger" type="button" style="width:100%;margin-top:14px">BÖRJA OM</button>
   </aside>
 
 </div>
@@ -546,26 +579,33 @@ function setServerState(kind,text){
 
 const ROLE_LABELS={background:'BAKGRUND',texture:'TEXTUR',stickers:'STICKERS',copy:'COPYWRITER',font:'TYPSNITT',draw:'TECKNA',paint:'PAINTBRUSH',chaos:'CHAOS',photo:'FOTOGRAF'};
 function primeAudio(){try{audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume()}catch(e){}}
+// K/P KOLLEKTIV: on a real deployment, most of the notification sounds
+// (chat from someone else, someone else's role/format/avsluta-request)
+// are triggered from an incoming SOCKET event, not from this browser's own
+// click — and a socket callback is not a "user gesture", so a browser's
+// autoplay policy can leave audioCtx stuck suspended forever if that's the
+// only place priming is attempted (this is the #1 real-world reason "ljud
+// funkar inte" even though the wiring below is all correct). To fix that,
+// prime/resume the ONE shared audioCtx on every genuine tap/click/key
+// anywhere on the page — not just the handful of specific buttons — so by
+// the time a notification needs to play, the context is already unlocked.
+// Cheap and idempotent (skipped entirely once audioCtx is already running),
+// and also re-primes on returning to the tab, since mobile browsers often
+// suspend audio while a tab is backgrounded/the screen is locked.
+['pointerdown','keydown'].forEach(evt=>document.addEventListener(evt,primeAudio,{passive:true}));
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')primeAudio()});
 function voteSound(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.frequency.setValueAtTime(620,n);o.frequency.setValueAtTime(820,n+.11);g.gain.setValueAtTime(.08,n);g.gain.exponentialRampToValueAtTime(.001,n+.24);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.25)}catch(e){}}
 function chatSound(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.type='sine';o.frequency.setValueAtTime(720,n);g.gain.setValueAtTime(.025,n);g.gain.exponentialRampToValueAtTime(.001,n+.055);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.06)}catch(e){}}
-// V11: LJUD — a few more small cues in the same one-liner-oscillator style
-// as voteSound/chatSound above, so everyday actions (adding a sticker,
-// finishing a brush stroke, switching to a shiny material, moving through
-// the guided flow, remixing CHAOS) get a bit of audio feedback instead of
-// being completely silent. Every one is gated by soundEnabled and wrapped
-// in try/catch exactly like the two above — never allowed to break the app
-// if the Web Audio API is unavailable or blocked.
+// V11: LJUD — a couple more small cues in the same one-liner-oscillator
+// style as voteSound/chatSound above. Kept deliberately few: a click for
+// the LJUD-toggle itself, an advance/finished pair for the solo guided
+// flow, and soundFinished doubles as the "hela gruppen är klar" cue below.
+// Every one is gated by soundEnabled and wrapped in try/catch exactly like
+// the two above — never allowed to break the app if the Web Audio API is
+// unavailable or blocked.
 function soundClick(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.type='sine';o.frequency.setValueAtTime(340,n);g.gain.setValueAtTime(.05,n);g.gain.exponentialRampToValueAtTime(.001,n+.05);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.06)}catch(e){}}
-function soundStickerAdd(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.type='triangle';o.frequency.setValueAtTime(520,n);o.frequency.exponentialRampToValueAtTime(980,n+.09);g.gain.setValueAtTime(.09,n);g.gain.exponentialRampToValueAtTime(.001,n+.14);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.15)}catch(e){}}
-function soundShimmer(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;const n=audioCtx.currentTime;[1600,2000,2500].forEach((f,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='sine';const t=n+i*.045;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(.05,t);g.gain.exponentialRampToValueAtTime(.001,t+.35);o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+.36)})}catch(e){}}
 function soundAdvance(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;const n=audioCtx.currentTime;[440,660].forEach((f,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='sine';const t=n+i*.09;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(.07,t);g.gain.exponentialRampToValueAtTime(.001,t+.18);o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+.19)})}catch(e){}}
 function soundFinished(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;const n=audioCtx.currentTime;[523,659,784,1046].forEach((f,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='triangle';const t=n+i*.1;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(.09,t);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+.32)})}catch(e){}}
-// Remix's "whoosh" needs a broadband source, not a single tone — a short
-// burst of filtered noise (linearly faded out inside the buffer itself, on
-// top of the usual gain envelope) with a bandpass sweep up and back down
-// reads as air/motion rather than a musical note, closer to a physical
-// shuffle than the chime-y cues above.
-function soundRemix(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;const n=audioCtx.currentTime,dur=.4;const buf=audioCtx.createBuffer(1,Math.round(audioCtx.sampleRate*dur),audioCtx.sampleRate);const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*(1-i/d.length);const src=audioCtx.createBufferSource();src.buffer=buf;const f=audioCtx.createBiquadFilter();f.type='bandpass';f.Q.value=.7;f.frequency.setValueAtTime(300,n);f.frequency.exponentialRampToValueAtTime(3200,n+dur*.6);f.frequency.exponentialRampToValueAtTime(500,n+dur);const g=audioCtx.createGain();g.gain.setValueAtTime(.35,n);g.gain.exponentialRampToValueAtTime(.001,n+dur);src.connect(f);f.connect(g);g.connect(audioCtx.destination);src.start(n);src.stop(n+dur)}catch(e){}}
 // K/P KOLLEKTIV: two "send a sound to everyone" reactions (see the
 // POSITIVT LJUD/NEGATIVT LJUD buttons in the chat panel) — same
 // one-liner-oscillator style as the rest, gated by soundEnabled and
@@ -763,14 +803,28 @@ function enterRoom(res){
  mySocketId=socket.id;
  saveIdentity();
 
+ // K/P KOLLEKTIV: a brand new room has no res.state yet (the server only
+ // fills that in once someone actually draws something), but the CLIENT's
+ // own `state` object still held whatever poster was on screen a moment
+ // ago — a previous room, or leftover solo content — so without this,
+ // creating a new room silently kept the old canvas around instead of
+ // starting blank. Same idea for the chat feed: it's DOM the client built
+ // up itself and the server never re-sends history, so it has to be wiped
+ // by hand on every room entry, new room or existing one.
+ const feed=document.getElementById('chatFeed');
+ if(feed)feed.innerHTML='';
+ document.getElementById('chatBadge')?.classList.add('hidden');
+
+ applyingRemote=true;
  if(res.state){
-   applyingRemote=true;
    Object.assign(state,res.state);
-   normalizeState();
-   applyCanvasFormat();
-   hydratePhotos();
-   applyingRemote=false;
+ } else {
+   Object.assign(state,blankState());
  }
+ normalizeState();
+ applyCanvasFormat();
+ hydratePhotos();
+ applyingRemote=false;
  lastSentJSON=JSON.stringify(serializableState());
 
  document.getElementById('lobby').classList.add('hidden');
@@ -856,7 +910,20 @@ const TEXTURE_META=Object.fromEntries(TEXTURE_KINDS.map(([k,label,fam,hint])=>[k
 // swapped out for DUBBELEXPONERING (double exposure), BLÄCKBLÖDNING (ink
 // bleed) and VÄV (interlaced weave) — see chaosTransform. PIXEL was dropped
 // in that same pass but brought back in V9 on request.
-const CHAOS_KEYS=['glitch','warp','melt','ripple','echo','pixel','dubbel','blod','vav','split','virvel','spegel'];
+// K/P KOLLEKTIV: RIPPLE and ECHO removed on user request ("några chaos
+// modes som är lika varandra") — RIPPLE was WARP's own sine-wave-band-
+// shift technique at a different frequency (same mechanic, marginal visual
+// difference), and ECHO was a fixed 5-step version of exactly what
+// BLÄCKBLÖDNING already does with a tunable step count. In their place:
+// raster/blyerts/akvarell, three "whole poster vibe" filters (newsprint
+// halftone, pencil sketch, watercolour) — a different KIND of effect from
+// every one above, which all displace/repeat/recolour the existing pixels
+// but never restyle the image itself.
+const CHAOS_KEYS=['glitch','warp','melt','pixel','dubbel','blod','vav','split','virvel','spegel','raster','blyerts','akvarell'];
+// The three "whole poster vibe" filters — see render()'s applyGlobal block,
+// which gives these their own full-canvas pass instead of the foreground-
+// diff pass every other CHAOS_KEYS effect uses.
+const VIBE_KEYS=['raster','blyerts','akvarell'];
 function zeroChaosLayer(){return Object.fromEntries(CHAOS_KEYS.map(k=>[k,0]))}
 // V11: REMIX — a one-click alternative to hand-tuning every slider. Instead
 // of a flat wash of every effect at once (which tends to just look like
@@ -871,7 +938,6 @@ function chaosRemix(){
  const keys=[...CHAOS_KEYS].sort(()=>Math.random()-0.5).slice(0,n);
  keys.forEach(k=>{layer[k]=Math.round(20+Math.random()*65)});
  state.chaos.layers[editing]=layer;
- soundRemix();
  saveLocal();buildControls();render();
 }
 // V7.2: CHAOS no longer picks one specific sticker/text/stroke/photo — a
@@ -1838,7 +1904,18 @@ const PAINT_MASK_SCALE=.38; // downscaled working res, same trick as BAKGRUND's 
  // Scales with W/H, so exportAtScale()'s supersampled export canvas gets a
  // proportionally higher-res mask "for free" — that's the main fix for
  // METALL/MÅLAD looking pixelated in the exported file.
-function paintGrainScale(){ return Math.max(1,Math.min(4,(W*H)/(794*1123))) }
+// K/P KOLLEKTIV: the old cap of 4 was fine for a live A4 edit (ratio 1) but
+// silently under-scaled at EXPORT_SCALE=3× (area grows 9×, so grain density
+// nearly halved) and each grain speck was still a fixed 1 REAL pixel rect —
+// 3× smaller relative to the poster at export than while editing. Both are
+// exactly the same class of "effect doesn't rescale itself" bug already
+// fixed for the paint blur radius (paintRes) and CHAOS — this was the
+// biggest measured contributor to "exporten blir fortfarande lite
+// annorlunda" (METALL/MÅLAD's grain texture came out visibly sparser/finer
+// in the exported file). Cap raised well past any realistic export ratio
+// instead of removed outright, so a pathological custom format can't make
+// this scatter loop run away.
+function paintGrainScale(){ return Math.max(1,Math.min(20,(W*H)/(794*1123))) }
 let paintMaskCanvas=null,paintMaskCtx=null;
 function ensurePaintMaskCanvas(){
  const mw=Math.max(1,Math.round(W*PAINT_MASK_SCALE)),mh=Math.max(1,Math.round(H*PAINT_MASK_SCALE));
@@ -1863,12 +1940,17 @@ function tintPaintMask(maskC,color){
  cc.drawImage(maskC,0,0);
  return c;
 }
-function scatterPaintGrain(sctx,x0,y0,x1,y1,seed,count,darkA,lightA){
+function scatterPaintGrain(sctx,x0,y0,x1,y1,seed,count,darkA,lightA,px){
+ // px: each grain speck's size in REAL pixels. Without this, a fixed 1×1
+ // rect reads 3× smaller relative to the poster at EXPORT_SCALE=3× than it
+ // does live — pass the same W/794 ratio (paintRes) the caller already
+ // uses for the blur radius, so grain size matches across edit/export too.
+ px=Math.max(1,Math.round(px||1));
  const rnd=mulberry32Paint(seed);
  for(let i=0;i<count;i++){
   const gx=x0+rnd()*(x1-x0),gy=y0+rnd()*(y1-y0);
   sctx.fillStyle=rnd()<0.5?`rgba(0,0,0,${darkA})`:`rgba(255,255,255,${lightA})`;
-  sctx.fillRect(gx,gy,1,1);
+  sctx.fillRect(gx,gy,px,px);
  }
 }
 const PAINT_LIGHT_ANGLE=-2.4;
@@ -1929,13 +2011,13 @@ function renderMergedPaintStrokes(strokes){
   boxBlurAlphaPass(blurred.data,mw,mh,blurR,false);
  }
 
- const shadowA=shiny?0.13:0.12, shadowCutoff=92, shadowSteep=4;
- const rimCutoff=shiny?138:120, rimSteep=shiny?6.5:5.5, rimA=shiny?0.36:0.60;
+ const shadowA=shiny?0.16:0.12, shadowCutoff=92, shadowSteep=4;
+ const rimCutoff=shiny?138:120, rimSteep=shiny?6.5:5.5, rimA=shiny?0.44:0.60;
  const bodyCutoff=shiny?150:134, bodySteep=shiny?11:8;
 
  const shadowLayer=paintMaskToCanvas(blurred,shadowCutoff,shadowSteep);
  const rimLayerRaw=paintMaskToCanvas(blurred,rimCutoff,rimSteep);
- const rimLayer=tintPaintMask(rimLayerRaw,rgbStrPaint(mixBlackPaint(base,shiny?.72:.68)));
+ const rimLayer=tintPaintMask(rimLayerRaw,rgbStrPaint(mixBlackPaint(base,shiny?.80:.68)));
  const bodyLayer=paintMaskToCanvas(blurred,bodyCutoff,bodySteep);
 
  ctx.save();
@@ -1966,15 +2048,21 @@ function renderMergedPaintStrokes(strokes){
   // gets a warm pinkish shine, a blue stroke a cool pale-blue shine, etc.,
   // rather than every color looking like the same generic chrome.
   // K/P KOLLEKTIV: pushed the light/dark contrast and highlight strength
-  // further on user request ("mer glossy och shiny") — brighter highs,
-  // darker lows, a slightly bigger/brighter core hotspot below.
-  const hi=mixWhitePaint(base,.86), lo=mixBlackPaint(base,.74);
-  const shineTint=mixWhitePaint(base,.87);
+  // further TWICE on user request ("mer glossy och shiny", then again with
+  // liquid-chrome/mercury reference photos) — near-white highs, near-black
+  // lows, an extra gradient stop so the light sweeps across in two bands
+  // rather than one flat linear fade (closer to how a curved metal surface
+  // actually catches light), and a tighter/brighter core streak + hotspot
+  // below.
+  const hi=mixWhitePaint(base,.95), lo=mixBlackPaint(base,.86);
+  const shineTint=mixWhitePaint(base,.96);
   const gx0=cx+Math.cos(PAINT_LIGHT_ANGLE)*r,gy0=cy+Math.sin(PAINT_LIGHT_ANGLE)*r;
   const gx1=cx-Math.cos(PAINT_LIGHT_ANGLE)*r,gy1=cy-Math.sin(PAINT_LIGHT_ANGLE)*r;
   const grad=sctx.createLinearGradient(gx0,gy0,gx1,gy1);
   grad.addColorStop(0,rgbStrPaint(hi));
-  grad.addColorStop(.48,rgbStrPaint(base));
+  grad.addColorStop(.16,rgbStrPaint(mixWhitePaint(base,.42)));
+  grad.addColorStop(.50,rgbStrPaint(base));
+  grad.addColorStop(.82,rgbStrPaint(mixBlackPaint(base,.38)));
   grad.addColorStop(1,rgbStrPaint(lo));
   sctx.fillStyle=grad; sctx.fillRect(0,0,W,H);
 
@@ -1987,7 +2075,7 @@ function renderMergedPaintStrokes(strokes){
     const ax=p.x-Math.cos(PAINT_LIGHT_ANGLE)*w*.30,ay=p.y-Math.sin(PAINT_LIGHT_ANGLE)*w*.30;
     const ar=Math.max(3,w*.5*endBoost);
     const ag=sctx.createRadialGradient(ax,ay,0,ax,ay,ar);
-    ag.addColorStop(0,'rgba(0,0,0,0.15)'); ag.addColorStop(1,'rgba(0,0,0,0)');
+    ag.addColorStop(0,'rgba(0,0,0,0.22)'); ag.addColorStop(1,'rgba(0,0,0,0)');
     sctx.fillStyle=ag; sctx.beginPath();sctx.arc(ax,ay,ar,0,Math.PI*2);sctx.fill();
    });
   });
@@ -1998,16 +2086,21 @@ function renderMergedPaintStrokes(strokes){
    g.forEach((p,i)=>{
     const t=n>1?i/(n-1):.5, w=p.w;
     const hx=p.x+Math.cos(PAINT_LIGHT_ANGLE)*w*.18,hy=p.y+Math.sin(PAINT_LIGHT_ANGLE)*w*.18;
-    const hr=Math.max(3,w*.62);
+    const hr=Math.max(3,w*.66);
     const hg=sctx.createRadialGradient(hx,hy,0,hx,hy,hr);
-    hg.addColorStop(0,rgbStrPaint(shineTint,0.68));
-    hg.addColorStop(.55,rgbStrPaint(shineTint,0.28));
+    hg.addColorStop(0,rgbStrPaint(shineTint,0.85));
+    hg.addColorStop(.4,rgbStrPaint(shineTint,0.42));
+    hg.addColorStop(.7,rgbStrPaint(shineTint,0.16));
     hg.addColorStop(1,rgbStrPaint(shineTint,0));
     sctx.fillStyle=hg; sctx.beginPath();sctx.arc(hx,hy,hr,0,Math.PI*2);sctx.fill();
    });
   });
 
-  const coreLayers=[{k:.34,a:.15},{k:.24,a:.21},{k:.16,a:.29},{k:.10,a:.40},{k:.055,a:.55},{k:.028,a:.72},{k:.013,a:.88}];
+  // Tightened and brightened vs. the original set — a narrower, hotter
+  // core (down to k:.010 at nearly full alpha) reads as a crisp mirror-
+  // line highlight instead of a soft glow, the "sharp white streak" look
+  // in the liquid-chrome reference photos.
+  const coreLayers=[{k:.32,a:.18},{k:.22,a:.26},{k:.14,a:.37},{k:.09,a:.50},{k:.05,a:.66},{k:.026,a:.82},{k:.010,a:.97}];
   valid.forEach(({g})=>{
    const n=g.length, linePts=[];
    g.forEach((p,i)=>{
@@ -2035,12 +2128,12 @@ function renderMergedPaintStrokes(strokes){
     const dx=p.x+Math.cos(PAINT_LIGHT_ANGLE)*w*.12,dy=p.y+Math.sin(PAINT_LIGHT_ANGLE)*w*.12;
     const dr=Math.max(2,w*.42);
     const dg=sctx.createRadialGradient(dx,dy,0,dx,dy,dr);
-    dg.addColorStop(0,rgbStrPaint(shineTint,0.52)); dg.addColorStop(1,rgbStrPaint(shineTint,0));
+    dg.addColorStop(0,rgbStrPaint(shineTint,0.66)); dg.addColorStop(1,rgbStrPaint(shineTint,0));
     sctx.fillStyle=dg; sctx.beginPath();sctx.arc(dx,dy,dr,0,Math.PI*2);sctx.fill();
    });
   });
 
-  scatterPaintGrain(sctx,x0,y0,x1,y1,1337,Math.round(7000*paintGrainScale()),0.025,0.035);
+  scatterPaintGrain(sctx,x0,y0,x1,y1,1337,Math.round(7000*paintGrainScale()),0.025,0.035,paintRes);
  }else{
   const hi=mixWhitePaint(base,.32), lo=mixBlackPaint(base,.42);
   sctx.fillStyle=rgbStrPaint(base); sctx.fillRect(0,0,W,H);
@@ -2072,7 +2165,7 @@ function renderMergedPaintStrokes(strokes){
   });
   sctx.globalCompositeOperation='source-over';
 
-  scatterPaintGrain(sctx,x0,y0,x1,y1,4242,Math.round(16000*paintGrainScale()),0.07,0.07);
+  scatterPaintGrain(sctx,x0,y0,x1,y1,4242,Math.round(16000*paintGrainScale()),0.07,0.07,paintRes);
   const fleckRnd=mulberry32Paint(5151);
   for(let i=0;i<Math.round(140*paintGrainScale());i++){
    const gx=x0+fleckRnd()*(x1-x0),gy=y0+fleckRnd()*(y1-y0);
@@ -2193,7 +2286,6 @@ function addOrRemoveFillAt(p){
  const idx=state.fills.findIndex(f=>Math.hypot(f.x-p.x,f.y-p.y)<hitR);
  if(idx>=0)state.fills.splice(idx,1);
  else state.fills.push({x:p.x,y:p.y,color:state.draw.color,opacity:100,seed:Math.floor(Math.random()*1e8)});
- soundClick();
  saveLocal();render();
 }
 function renderStroke(st){
@@ -2853,12 +2945,38 @@ function render(){
  if(applyGlobal){
    const full=document.createElement('canvas');full.width=W;full.height=H;
    full.getContext('2d').drawImage(C,0,0);
-   const fg=extractForeground(full,bg);
-   const chaotic=chaosTransform(fg,chaosLayers.all);
 
+   // VIBE_KEYS (RASTER/BLYERTS/AKVARELL) restyle the WHOLE poster, background
+   // included — unlike the other ten HELA POSTERN effects, which only ever
+   // displace/duplicate/recolour the existing pixels and so run against
+   // extractForeground()'s foreground-only diff (transparent everywhere the
+   // poster matches its plain background) so the background itself stays
+   // untouched underneath them. Running a vibe filter on that same diff was
+   // a real bug, not just a style mismatch: BLYERTS/AKVARELL left the
+   // background completely unaffected (nothing to blur/sketch outside the
+   // foreground shapes), and RASTER actively misread every transparent gap
+   // as solid black ink, painting a black halftone over most of the poster.
+   // So a vibe key gets its own pass straight over the full composited
+   // canvas, and any displacement keys active at the same time still get
+   // their normal extractForeground-based pass on top of that.
+   const allVals=chaosLayers.all;
+   const vibeActive=VIBE_KEYS.some(k=>(allVals[k]||0)>0);
+   const displaceKeys=CHAOS_KEYS.filter(k=>!VIBE_KEYS.includes(k));
+   const displaceActive=displaceKeys.some(k=>(allVals[k]||0)>0);
+
+   let base=bg;
+   if(vibeActive){
+     const vibeVals=Object.assign(zeroChaosLayer(),Object.fromEntries(VIBE_KEYS.map(k=>[k,allVals[k]||0])));
+     base=chaosTransform(full,vibeVals);
+   }
    ctx.clearRect(0,0,W,H);
-   ctx.drawImage(bg,0,0);
-   ctx.drawImage(chaotic,0,0);
+   ctx.drawImage(base,0,0);
+   if(displaceActive){
+     const fg=extractForeground(full,bg);
+     const displaceVals=Object.assign(zeroChaosLayer(),Object.fromEntries(displaceKeys.map(k=>[k,allVals[k]||0])));
+     const chaotic=chaosTransform(fg,displaceVals);
+     ctx.drawImage(chaotic,0,0);
+   }
  }
  checkGuidedAdvance();
 }
@@ -2891,10 +3009,10 @@ function scheduleRender(){
 // Preload all four web fonts once up front and re-render when they land.
 function loadTextFonts(){
  if(!document.fonts)return;
- // V7 final 12-font list: Impact/Arial/Helvetica/Times New Roman are system
- // fonts (no load() needed, and no guarantee they exist on every OS — that
- // risk was accepted deliberately). The other 8 are real web fonts and need
- // to actually finish downloading before canvas fillText will use them.
+ // V7 final 12-font list: Impact/Arial/Times New Roman are system fonts (no
+ // load() needed, and no guarantee they exist on every OS — that risk was
+ // accepted deliberately). The other 9 are real web fonts and need to
+ // actually finish downloading before canvas fillText will use them.
  const specs=[
   '700 52px "Playfair Display"',
   '700 52px "Space Mono"',
@@ -2903,7 +3021,8 @@ function loadTextFonts(){
   '700 52px "Caveat"',
   '400 52px "Press Start 2P"',
   '400 52px "UnifrakturMaguntia"',
-  '400 52px "Fascinate"'
+  '400 52px "Fascinate"',
+  '700 52px "Dancing Script"'
  ];
  Promise.all(specs.map(s=>document.fonts.load(s).catch(()=>{}))).then(()=>render());
 }
@@ -2923,11 +3042,18 @@ function loadTextFonts(){
 function textLetterSpacing(inflateAmt){
  return -(inflateAmt*0.9);
 }
-function measureGlyphs(gctx,text,size,font,letterJitter,letterSpacingPx,seed){
+// The `bold` param has to mirror whatever drawGlyphs() actually renders
+// with (see the "Force synthetic bold" note below, INFLATE forces 900
+// weight): a bold glyph measures WIDER than the same glyph at normal
+// weight, so measuring at normal weight while drawing bold under-sizes the
+// offscreen canvas — the width error compounds letter by letter and the
+// last character's ink runs past the right edge and gets hard-clipped
+// (this was the "INFLATE kapar ofta sista bokstaven" bug).
+function measureGlyphs(gctx,text,size,font,letterJitter,letterSpacingPx,seed,bold){
  let w=0;
  for(let idx=0;idx<text.length;idx++){
   const jSize=letterJitter?size*(0.86+rand(seed+idx*71)*0.3):size;
-  gctx.font=`${jSize}px "${font}"`;
+  gctx.font=`${bold?'900 ':''}${jSize}px "${font}"`;
   w+=gctx.measureText(text[idx]).width+letterSpacingPx;
  }
  return Math.max(0,w-letterSpacingPx);
@@ -2992,7 +3118,7 @@ function drawText(t){
  }else{
    const spacing=textLetterSpacing(inflate);
    const mctx=document.createElement('canvas').getContext('2d');
-   const w=measureGlyphs(mctx,text,size,font,letterJitter,spacing,seed);
+   const w=measureGlyphs(mctx,text,size,font,letterJitter,spacing,seed,true);
    const pad=Math.max(inflate*2.5,size*0.35);
    const offW=Math.max(2,Math.ceil(w+pad*2)),offH=Math.max(2,Math.ceil(size*1.7+pad*2));
    const off=document.createElement('canvas');off.width=offW;off.height=offH;
@@ -3092,6 +3218,7 @@ function drawSticker(s){
  if(s.kind==='spiral'){ctx.strokeStyle=s.color;ctx.lineWidth=Math.max(2,s.size*.08);ctx.beginPath();for(let i=0;i<90;i++){let a=i*.24,r=s.size*(i/90);let x=Math.cos(a)*r,y=Math.sin(a)*r;i?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke()}
  else if(s.kind==='heart'){ctx.fillStyle=s.color;ctx.beginPath();ctx.moveTo(0,s.size*.35);ctx.bezierCurveTo(-s.size*.8,-s.size*.15,-s.size*.45,-s.size*.65,0,-s.size*.3);ctx.bezierCurveTo(s.size*.45,-s.size*.65,s.size*.8,-s.size*.15,0,s.size*.35);ctx.fill()}
  else if(s.kind==='star'){ctx.fillStyle=s.color;ctx.beginPath();for(let i=0;i<10;i++){let a=-Math.PI/2+i*Math.PI/5,r=i%2?s.size*.42:s.size;ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r)}ctx.fill()}
+ else if(s.kind==='line'){ctx.strokeStyle=s.color;ctx.lineCap='round';ctx.lineWidth=Math.max(2,s.size*.06);ctx.beginPath();ctx.moveTo(-s.size/2,0);ctx.lineTo(s.size/2,0);ctx.stroke()}
  else if(s.kind==='square'){ctx.fillStyle=s.color;ctx.fillRect(-s.size/2,-s.size/2,s.size,s.size)}
  else if(s.kind==='circle'){ctx.fillStyle=s.color;ctx.beginPath();ctx.arc(0,0,s.size/2,0,7);ctx.fill()}
  else if(s.kind==='blob'){ctx.fillStyle=s.color;blobPath(s.size,seed);ctx.fill()}
@@ -3377,18 +3504,6 @@ function chaosTransform(sourceCanvas,vals){
    swap();
  }
 
- // RIPPLE — denser wave distortion, visually distinct from WARP.
- if(c.ripple>0){
-   const d=clearDst(),strength=c.ripple/100;
-   const band=4;
-   for(let y=0;y<Hc;y+=band){
-     const shift=Math.sin(y*(.035+.025*strength))*strength*52;
-     const scale=1+Math.sin(y*.019)*strength*.025;
-     d.drawImage(src,0,y,Wc,band,shift-(Wc*(scale-1))/2,y,Wc*scale,band);
-   }
-   swap();
- }
-
  // MELT — vertical columns drag downward by different amounts.
  if(c.melt>0){
    const d=clearDst(),strength=c.melt/100;
@@ -3494,18 +3609,6 @@ function chaosTransform(sourceCanvas,vals){
    swap();
  }
 
- // ECHO — repeated translucent copies that trail diagonally.
- if(c.echo>0){
-   const d=clearDst(),strength=c.echo/100;
-   d.drawImage(src,0,0);
-   for(let i=1;i<=5;i++){
-     d.globalAlpha=strength*(.17/i);
-     d.drawImage(src,i*10*strength,i*7*strength);
-   }
-   d.globalAlpha=1;
-   swap();
- }
-
  // K/P KOLLEKTIV: three new effect types, on user request — a different
  // underlying mechanic each, not just variations on the sine-wave-shift
  // technique the nine above already share.
@@ -3572,6 +3675,113 @@ function chaosTransform(sourceCanvas,vals){
    d.translate(Wc,0);d.scale(-1,1);
    d.drawImage(src,0,0);
    d.restore();
+   swap();
+ }
+
+ // K/P KOLLEKTIV: three "whole poster vibe" filters, on user request — a
+ // different KIND of effect from the ten above (which all displace, repeat
+ // or recolour-shift the existing pixels but never restyle the image
+ // itself). Each one fully replaces the visible result at any nonzero
+ // strength, same design as PIXEL above — strength tunes HOW the style
+ // looks (dot size, pencil-line softness, wash blur), not whether it's
+ // applied at all.
+
+ // RASTERISERA — a printed newsprint halftone screen: sample the average
+ // colour of each grid cell, draw one solid dot per cell sized by how dark
+ // that cell is. Sampling happens on a canvas already downscaled to the
+ // dot grid's own resolution (drawImage does the averaging for free) so
+ // this stays cheap no matter how big the true canvas is. strength is the
+ // dot pitch — small, barely-there dots at low strength, big obvious
+ // newsprint dots at high strength.
+ if(c.raster>0){
+   const d=clearDst(),strength=c.raster/100;
+   const cell=Math.round(4+strength*22);
+   const gw=Math.max(1,Math.ceil(Wc/cell)),gh=Math.max(1,Math.ceil(Hc/cell));
+   const tiny=document.createElement('canvas');tiny.width=gw;tiny.height=gh;
+   const tctx=tiny.getContext('2d',{willReadFrequently:true});
+   tctx.imageSmoothingEnabled=true;
+   tctx.drawImage(src,0,0,gw,gh);
+   const px=tctx.getImageData(0,0,gw,gh).data;
+   // NOTE: only paint paper + a dot where the source actually has any
+   // opacity, and scale both by that opacity. src is fully opaque when this
+   // runs against the whole poster (background()) or the whole-poster VIBE
+   // pass in render(), so this is a no-op there — but for a single sticker/
+   // text/photo/stroke category, src is transparent everywhere outside that
+   // one element, and getImageData reads a transparent pixel back as
+   // (0,0,0,0): unconditionally reading r/g/b off it (as before) misread
+   // "nothing here" as "solid black ink", painting an opaque paper+black-dot
+   // wash across the ENTIRE canvas instead of just around that element.
+   for(let gy=0;gy<gh;gy++){
+     for(let gx=0;gx<gw;gx++){
+       const i=(gy*gw+gx)*4;
+       const aFrac=px[i+3]/255;
+       if(aFrac<0.03)continue;
+       const r=px[i],g=px[i+1],b=px[i+2];
+       const lum=(0.299*r+0.587*g+0.114*b)/255;
+       d.globalAlpha=aFrac;
+       d.fillStyle='#f5f1e4';
+       d.fillRect(gx*cell,gy*cell,cell,cell);
+       const rad=(1-lum)*cell*0.62;
+       if(rad>=0.4){
+         d.fillStyle=`rgb(${r|0},${g|0},${b|0})`;
+         d.beginPath();
+         d.arc(gx*cell+cell/2,gy*cell+cell/2,rad,0,Math.PI*2);
+         d.fill();
+       }
+     }
+   }
+   d.globalAlpha=1;
+   swap();
+ }
+
+ // BLYERTS — the classic "pencil sketch" trick: a greyscale base dodge-
+ // blended with an inverted, blurred copy of itself. Flat/low-contrast
+ // areas blow out to bare paper white (nothing to draw); sharp edges stay
+ // dark and read as graphite line-work. strength is the blur radius —
+ // tighter, finer lines at low strength; looser, softer sketching at high
+ // strength.
+ if(c.blyerts>0){
+   const d=clearDst(),strength=c.blyerts/100;
+   const blurPx=Math.round(3+strength*14);
+   const gray=document.createElement('canvas');gray.width=Wc;gray.height=Hc;
+   const gctx=gray.getContext('2d');
+   gctx.filter='grayscale(1) contrast(1.05)';
+   gctx.drawImage(src,0,0);
+   const inv=document.createElement('canvas');inv.width=Wc;inv.height=Hc;
+   const ictx=inv.getContext('2d');
+   ictx.filter=`invert(1) blur(${blurPx}px)`;
+   ictx.drawImage(gray,0,0);
+   d.drawImage(gray,0,0);
+   d.globalCompositeOperation='color-dodge';
+   d.drawImage(inv,0,0);
+   d.globalCompositeOperation='source-over';
+   swap();
+ }
+
+ // AKVARELL — a soft blurred colour wash, a darker/more-blurred "pigment
+ // pooling" pass multiplied on top (mostly visible along edges, where the
+ // two different blur radii disagree), and a scattered paper grain on top
+ // of that — approximates watercolour without simulating any actual paint
+ // physics. strength scales both blur radii and how strong the pooling
+ // reads.
+ if(c.akvarell>0){
+   const d=clearDst(),strength=c.akvarell/100;
+   const blurPx=2+strength*7;
+   const wash=document.createElement('canvas');wash.width=Wc;wash.height=Hc;
+   const wctx=wash.getContext('2d');
+   wctx.filter=`blur(${blurPx}px) saturate(${1+strength*.5})`;
+   wctx.drawImage(src,0,0);
+   d.drawImage(wash,0,0);
+   const pool=document.createElement('canvas');pool.width=Wc;pool.height=Hc;
+   const pctx=pool.getContext('2d');
+   pctx.filter=`blur(${blurPx*2.4}px) brightness(0.8)`;
+   pctx.drawImage(src,0,0);
+   d.globalCompositeOperation='multiply';
+   d.globalAlpha=.35+.35*strength;
+   d.drawImage(pool,0,0);
+   d.globalCompositeOperation='source-over';
+   d.globalAlpha=1;
+   scatterPaintGrain(d,0,0,Wc,Hc,9911,Math.round(9000*Math.max(1,(Wc*Hc)/(794*1123))),0.03,0.05,1);
    swap();
  }
 
@@ -3673,19 +3883,17 @@ function colorRow(label,obj,key,releaseOnly=false){return `<div class="row"><lab
 function buildControls(){
  const el=document.getElementById('controls');let s='';
  if(showGuidedFinished){
+  // K/P KOLLEKTIV: this screen used to also offer its own "Rensa" and
+  // "Börja om" buttons here, on top of the always-visible "BÖRJA OM"
+  // button below the panel (id=anytimeReset) — three buttons that all
+  // ended up calling the exact same performFullReset(). Consolidated to
+  // just that one, per user request ("vi behöver bara en av dem").
   el.innerHTML=`<h2>Klar</h2>
-   <div class="hint">Alla nio roller är klara. Spara postern, eller rensa och börja om — du kan fortfarande klicka en roll ovan för att finjustera.</div>
+   <div class="hint">Alla nio roller är klara. Spara postern, eller klicka BÖRJA OM nedan — du kan fortfarande klicka en roll ovan för att finjustera.</div>
    <button id="finishPng" type="button" style="width:100%;margin-bottom:6px">Spara som png</button>
-   <button id="finishPdf" type="button" style="width:100%;margin-bottom:6px">Spara som pdf</button>
-   <button id="finishReset" type="button" class="danger" style="width:100%;margin-bottom:6px">Rensa</button>
-   <button id="finishStartOver" type="button" class="danger" style="width:100%">Börja om</button>`;
+   <button id="finishPdf" type="button" style="width:100%">Spara som pdf</button>`;
   document.getElementById('finishPng').onclick=()=>document.getElementById('export').click();
   document.getElementById('finishPdf').onclick=()=>exportPdf();
-  document.getElementById('finishReset').onclick=()=>document.getElementById('reset').click();
-  document.getElementById('finishStartOver').onclick=()=>{
-   if(!confirm('Börja om med en helt ny poster? Allt nuvarande innehåll försvinner.'))return;
-   if(window.performFullReset)performFullReset();
-  };
   return;
  }
  if(mode==='background')s=`<h2>BAKGRUND</h2><div class="row"><label>TYP</label><select id="bgType"><option value="solid">SOLID</option><option value="gradient">GRADIENT</option></select></div><div class="row"><label>FORM</label><select id="bgGradientMode"><option value="organisk">ORGANISK</option><option value="linjär">LINJÄR</option></select></div>${colorRow('FÄRG 1',state.bg,'c1',true)}${colorRow('FÄRG 2',state.bg,'c2',true)}<div id="third">${colorRow('FÄRG 3',state.bg,'c3',true)}</div>${slider('VINKEL',state.bg,'angle',0,360,1,true)}<div class="row"><label>ANTAL</label><select id="bgColors"><option>2</option><option>3</option></select></div><div class="hint">ORGANISK: mjuka, oregelbundna färgzoner som flyter in i varandra. LINJÄR: en rak, jämn gradient i VINKELNS riktning.</div>`;
@@ -3700,7 +3908,7 @@ function buildControls(){
   ${atCap?`<div class="hint">Max ${MAX_TEXTURES} texturlager — ta bort ett för att lägga till fler.</div>`:'<div class="hint">Lager kan kombineras — lägg gärna på flera.</div>'}
   ${textureControls()}`;
  }
- if(mode==='stickers')s=`<h2>STICKERS</h2><div class="object-list">${state.stickers.length?state.stickers.map((x,i)=>`<button data-pick-sticker="${i}" class="${i===selectedSticker?'active':''}">${i+1} · ${x.kind.toUpperCase()}</button>`).join(''):'<span class="hint">Inga stickers ännu.</span>'}</div><div class="grid">${['spiral','heart','star','square','circle','flower'].map(x=>`<button data-add="${x}">${({flower:'BLOMMA'})[x]||x.toUpperCase()}</button>`).join('')}</div><h2>ORGANISKA</h2><div class="grid">${['blob','thorn'].map(x=>`<button data-add="${x}">${({blob:'BLOB',thorn:'TAGG'})[x]}</button>`).join('')}</div><h2>IKONER</h2><div class="grid">${['arrow','speech'].map(x=>`<button data-add="${x}">${({arrow:'PIL',speech:'PRATBUBBLA'})[x]}</button>`).join('')}</div>${stickerControls()}`;
+ if(mode==='stickers')s=`<h2>STICKERS</h2><div class="object-list">${state.stickers.length?state.stickers.map((x,i)=>`<button data-pick-sticker="${i}" class="${i===selectedSticker?'active':''}">${i+1} · ${x.kind.toUpperCase()}</button>`).join(''):'<span class="hint">Inga stickers ännu.</span>'}</div><div class="grid">${['spiral','heart','star','square','circle','line','flower'].map(x=>`<button data-add="${x}">${({flower:'BLOMMA',line:'LINJE'})[x]||x.toUpperCase()}</button>`).join('')}</div><h2>ORGANISKA</h2><div class="grid">${['blob','thorn'].map(x=>`<button data-add="${x}">${({blob:'BLOB',thorn:'TAGG'})[x]}</button>`).join('')}</div><h2>IKONER</h2><div class="grid">${['arrow','speech'].map(x=>`<button data-add="${x}">${({arrow:'PIL',speech:'PRATBUBBLA'})[x]}</button>`).join('')}</div>${stickerControls()}`;
  if(mode==='copy'){
   const voiceSupported=!!(window.SpeechRecognition||window.webkitSpeechRecognition);
   // V7.1: errors used to fail completely silently (voiceListening just
@@ -3747,7 +3955,7 @@ ${slider('TAGGIG',state.paint,'jagged',0,100)}
   s=`<h2>LAGER</h2>${chaosTargetControls()}<div class="hint">Varje lager — HELA POSTERN, BAKGRUND, STICKER, TEXT, FOTO, TECKNING — har sitt eget kaos, och alla gäller samtidigt. Du redigerar just nu: <b>${editingLabel}</b>. ${editingHint} (● = det lagret har redan kaos på sig.)</div>
   <button id="chaosRemix" style="width:100%;margin-top:4px">REMIX DETTA LAGER</button>
   <div class="hint">Slumpar ett nytt, oväntat kaos för <b>${editingLabel}</b> — testa gärna flera gånger tills något känns rätt.</div>
-  <h2>KAOS · ORGANISKT</h2>${slider('WARP',layerVals,'warp')}${slider('MELT',layerVals,'melt')}${slider('RIPPLE',layerVals,'ripple')}${slider('BLÄCKBLÖDNING',layerVals,'blod')}<h2>KAOS · STRUKTUR</h2>${slider('GLITCH',layerVals,'glitch')}${slider('PIXEL',layerVals,'pixel')}${slider('ECHO',layerVals,'echo')}${slider('DUBBELEXPONERING',layerVals,'dubbel')}${slider('VÄV',layerVals,'vav')}<h2>KAOS · SÄRSKILT</h2>${slider('FÄRGSPLIT',layerVals,'split')}${slider('VIRVEL',layerVals,'virvel')}${slider('SPEGEL',layerVals,'spegel')}<div class="hint">Effekten ligger kvar även när du byter arbetsläge. Vill du inte ha något kaos alls, lämna bara allt på 0${guidedCurrentRole()==='chaos'?' — eller hoppa över nedan':''}.</div><div class="grid" style="margin-top:10px">
+  <h2>KAOS · ORGANISKT</h2>${slider('WARP',layerVals,'warp')}${slider('MELT',layerVals,'melt')}${slider('BLÄCKBLÖDNING',layerVals,'blod')}<h2>KAOS · STRUKTUR</h2>${slider('GLITCH',layerVals,'glitch')}${slider('PIXEL',layerVals,'pixel')}${slider('DUBBELEXPONERING',layerVals,'dubbel')}${slider('VÄV',layerVals,'vav')}<h2>KAOS · SÄRSKILT</h2>${slider('FÄRGSPLIT',layerVals,'split')}${slider('VIRVEL',layerVals,'virvel')}${slider('SPEGEL',layerVals,'spegel')}<h2>KAOS · VIBE</h2>${slider('RASTERISERA',layerVals,'raster')}${slider('BLYERTS',layerVals,'blyerts')}${slider('AKVARELL',layerVals,'akvarell')}<div class="hint">VIBE-effekterna byter ut hela posterns känsla (tidningstryck, pennskiss, akvarell) istället för att bara flytta runt eller upprepa det som redan finns där. Effekten ligger kvar även när du byter arbetsläge. Vill du inte ha något kaos alls, lämna bara allt på 0${guidedCurrentRole()==='chaos'?' — eller hoppa över nedan':''}.</div><div class="grid" style="margin-top:10px">
 <button id="chaosNormal">NOLLSTÄLL DETTA LAGER</button>
 <button id="chaosMax">DETTA LAGER · 100</button>
 </div>${skipBtn}`;
@@ -3823,15 +4031,18 @@ function textControls(fontOnly){
    <button id="delText" class="danger">TA BORT TEXT</button>`;
  }
 
- // V7 final 12-font list. Impact/Arial/Helvetica/Times New Roman are true
- // system fonts (no web-font load, no cross-platform guarantee — accepted
- // deliberately). The other 8 are real web fonts loaded in <head>; see
+ // V7 final 12-font list. Impact/Arial/Times New Roman are true system
+ // fonts (no web-font load, no cross-platform guarantee — accepted
+ // deliberately). The other 9 are real web fonts loaded in <head>; see
  // loadTextFonts() for the canvas-specific load step they still need.
+ // K/P KOLLEKTIV: swapped Helvetica (a near-duplicate of Arial right next
+ // to it in this same list) for Dancing Script, a flowing romantic script
+ // face, on user request.
  const fonts=[
   'Impact',
   'Playfair Display',
   'Arial',
-  'Helvetica',
+  'Dancing Script',
   'Space Mono',
   'Permanent Marker',
   'Comic Neue',
@@ -3930,7 +4141,6 @@ function wireControls(){
   const prevMat=state.paint.material;
   state.paint.material=q('material').value;
   if(q('materialNote'))q('materialNote').textContent=mats[state.paint.material]?.note||'';
-  if(state.paint.material==='METALL'&&prevMat!=='METALL')soundShimmer();else soundClick();
   saveLocal();render()
  }
 }
@@ -3942,7 +4152,7 @@ if(q('brushExtreme'))q('brushExtreme').onclick=()=>{
  state.paint.organic=100;state.paint.swell=100;state.paint.twist=100;state.paint.sticky=100;state.paint.jagged=100;
  saveLocal();buildControls();render()
 };
- el.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{const sp=randomSpawnPoint();state.stickers.push({kind:b.dataset.add,x:sp.x,y:sp.y,size:100,rot:0,opacity:100,sx:1,sy:1,color:palettes[Math.floor(Math.random()*palettes.length)],seed:Math.floor(Math.random()*1e8)});selectedSticker=state.stickers.length-1;soundStickerAdd();saveLocal();buildControls();render()});
+ el.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{const sp=randomSpawnPoint();state.stickers.push({kind:b.dataset.add,x:sp.x,y:sp.y,size:100,rot:0,opacity:100,sx:1,sy:1,color:palettes[Math.floor(Math.random()*palettes.length)],seed:Math.floor(Math.random()*1e8)});selectedSticker=state.stickers.length-1;saveLocal();buildControls();render()});
  if(q('delSticker'))q('delSticker').onclick=()=>{state.stickers.splice(selectedSticker,1);selectedSticker=-1;saveLocal();buildControls();render()};
  if(q('addText'))q('addText').onclick=()=>{const sp=randomSpawnPoint();state.texts.push({text:'NY TEXT',x:sp.x,y:sp.y,size:52,color:'#111111',font:'Arial',w:1,h:1,skew:0,rot:0,shadow:0,shadowColor:'#000',blur:8,sx:6,sy:6,inflate:0,letterJitter:false,border:'none',seed:Math.floor(Math.random()*1e8)});selectedText=state.texts.length-1;saveLocal();buildControls();render()}
 if(q('fontFamily')){
@@ -4132,7 +4342,6 @@ function finishDrawingGesture(){
  const finished=activeStroke;
  const wasErasing=erasing;
  drawing=false;erasing=false;activeStroke=null;
- if(finished&&!wasErasing&&finished.points.length>1)soundClick();
  if(multiplayerActive()){
    if(wasErasing)socket.emit('strokes-replace',{room:roomCode,strokes:state.strokes});
    else if(finished)socket.emit('stroke-add',{room:roomCode,stroke:finished});
@@ -4267,7 +4476,7 @@ socket.on('role-change-complete',d=>{
  // around GUIDED_ORDER, i.e. everyone has had every role at least once.
  // Everyone in the room gets this same broadcast, so this switches
  // everyone to the export/klar screen automatically, with no manual step.
- if(d.finished){showGuidedFinished=true;buildControls();updateRoleChoice();}
+ if(d.finished){soundFinished();showGuidedFinished=true;buildControls();updateRoleChoice();}
 });
 
 document.getElementById('chooseRole').onclick=()=>{
@@ -4314,6 +4523,7 @@ socket.on('finish-vote-cancelled',d=>{
 });
 socket.on('finish-early-complete',()=>{
  showFinishVote(null);
+ soundFinished();
  showGuidedFinished=true;
  buildControls();
  updateRoleChoice();
@@ -4453,17 +4663,63 @@ document.getElementById('posterView').onclick=()=>{
  document.getElementById('posterView').textContent=on?'TILLBAKA':'VISA POSTER';
 };
 
-
-
-document.getElementById('reset').onclick=()=>{
- if(!confirm('Rensa hela postern för alla i rummet?'))return;
- Object.assign(state,blankState());
- applyCanvasFormat();
- selectedSticker=-1;selectedText=-1;selectedPhoto=-1;selectedTexture=-1;
- drawing=false;activeStroke=null;erasing=false;
- buildControls();render();
- if(multiplayerActive())socket.emit('reset-room',{room:roomCode});
+// K/P KOLLEKTIV: local zoom/pan on the canvas, on user request ("vill
+// kunna zooma in och flytta runt canvasen, bara min vy"). Pure CSS
+// transform on #canvas -- W/H, state and every coordinate the app actually
+// draws with are completely untouched, so this can't drift the poster,
+// can't be seen by anyone else, and doesn't need to cross the socket at
+// all. point() (used for every drawing/pick gesture) already recomputes
+// C.getBoundingClientRect() on every call, and getBoundingClientRect()
+// reports the box AFTER any CSS transform, so drawing/picking stays
+// pixel-accurate at any zoom/pan level for free -- nothing else in the app
+// needed to change.
+let viewZoom=1,viewPanX=0,viewPanY=0;
+const VIEW_ZOOM_MIN=0.25,VIEW_ZOOM_MAX=4;
+function applyCanvasView(){
+ C.style.transform=`translate(${viewPanX}px,${viewPanY}px) scale(${viewZoom})`;
+ const pct=document.getElementById('viewZoomPct');
+ if(pct)pct.textContent=Math.round(viewZoom*100)+'%';
+}
+function resetCanvasView(){viewZoom=1;viewPanX=0;viewPanY=0;applyCanvasView()}
+// Keeps the point under (clientX,clientY) visually fixed while the zoom
+// level changes around it, same math a trackpad-pinch or scroll-zoom in
+// any map/design tool uses: measure the cursor's offset from the canvas's
+// current on-screen center, then adjust the pan by that offset scaled by
+// how much the zoom factor actually changed (clamped, so a zoom request
+// that hits VIEW_ZOOM_MIN/MAX still pans correctly for the smaller actual
+// change).
+function zoomCanvasAt(clientX,clientY,factor){
+ const rect=C.getBoundingClientRect();
+ const centerX=rect.left+rect.width/2,centerY=rect.top+rect.height/2;
+ const offsetX=clientX-centerX,offsetY=clientY-centerY;
+ const newZoom=Math.max(VIEW_ZOOM_MIN,Math.min(VIEW_ZOOM_MAX,viewZoom*factor));
+ const actualFactor=newZoom/viewZoom;
+ viewPanX+=offsetX*(1-actualFactor);
+ viewPanY+=offsetY*(1-actualFactor);
+ viewZoom=newZoom;
+ applyCanvasView();
+}
+document.getElementById('stage').addEventListener('wheel',(e)=>{
+ if(e.ctrlKey||e.metaKey){
+  e.preventDefault();
+  zoomCanvasAt(e.clientX,e.clientY,Math.pow(1.0025,-e.deltaY));
+ }else{
+  e.preventDefault();
+  viewPanX-=e.deltaX;viewPanY-=e.deltaY;
+  applyCanvasView();
+ }
+},{passive:false});
+document.getElementById('viewZoomIn').onclick=()=>{
+ const r=C.getBoundingClientRect();
+ zoomCanvasAt(r.left+r.width/2,r.top+r.height/2,1.25);
 };
+document.getElementById('viewZoomOut').onclick=()=>{
+ const r=C.getBoundingClientRect();
+ zoomCanvasAt(r.left+r.width/2,r.top+r.height/2,1/1.25);
+};
+document.getElementById('viewZoomPct').onclick=resetCanvasView;
+
+
 
 function offerPngDownload(dataUrl){
  let box=document.getElementById('pngDownloadBox');
@@ -4737,10 +4993,6 @@ function soloInit(){
   updateRoleChoice();
   setMode(guidedCurrentRole()||'background',true);
   if(multiplayerActive())socket.emit('reset-room',{room:roomCode});
- };
- document.getElementById('reset').onclick=()=>{
-  if(!confirm(multiplayerActive()?'Rensa hela postern för alla i rummet?':'Rensa hela testpostern?'))return;
-  performFullReset();
  };
  document.getElementById('anytimeReset').onclick=()=>{
   if(!confirm('Börja om med en helt ny poster?'+(multiplayerActive()?' Detta påverkar alla i rummet.':' Allt nuvarande innehåll försvinner.')))return;
