@@ -1940,6 +1940,54 @@ function tintPaintMask(maskC,color){
  cc.drawImage(maskC,0,0);
  return c;
 }
+// K/P KOLLEKTIV V5 — METALL's shine highlight, rebuilt on the ACTUAL merged
+// silhouette instead of per-stroke geometry (see the long note where this
+// is called, in renderMergedPaintStrokes). At every mask pixel, the local
+// alpha gradient points outward from the shape — it's the surface's own
+// "which way is this edge facing" normal — so wherever that normal lines
+// up with the light direction the surface is catching the light and gets
+// painted bright; wherever it faces away it stays dark. Gradient MAGNITUDE
+// alone already isolates the thin transition band around the edge (a flat
+// interior or flat exterior both have ~zero gradient), so this needs no
+// separate alpha-threshold guess at where "the edge" is.
+function paintRimHighlightMask(alphaData,mw,mh,lightAngle,gain,paintRes){
+ const out=new ImageData(mw,mh);
+ const od=out.data;
+ const lx=Math.cos(lightAngle),ly=Math.sin(lightAngle);
+ const at=(x,y)=>alphaData[(y*mw+x)*4+3];
+ // sampling the gradient a couple of pixels out (not just the immediate
+ // neighbour) averages over small local wobble in the organic brush
+ // boundary, so the normal tracks the edge's overall curve direction
+ // instead of flickering with every tiny bump — otherwise only the handful
+ // of points that happen to face EXACTLY at the light lit up, leaving the
+ // rest of the light-facing side dark and turning the line into scattered
+ // dots instead of one continuous highlight. Scaled by paintRes (same
+ // correction as blurR above) — this mask's own resolution already grows
+ // with a 3×-supersampled export, so a FIXED sampling step would sample a
+ // proportionally tighter/noisier neighbourhood there than live, exactly
+ // the "looks fine live, looks spotty in the exported file" bug this file
+ // repeatedly corrects for elsewhere.
+ const st=Math.max(1,Math.round(2*paintRes));
+ const edgeDiv=7*paintRes;
+ for(let y=0;y<mh;y++){
+  const ym=y>=st?y-st:y, yp=y<mh-st?y+st:y;
+  for(let x=0;x<mw;x++){
+   const xm=x>=st?x-st:x, xp=x<mw-st?x+st:x;
+   const gx=(at(xp,y)-at(xm,y))/2, gy=(at(x,yp)-at(x,ym))/2;
+   const glen=Math.hypot(gx,gy);
+   if(glen<0.6)continue;
+   const nx=-gx/glen, ny=-gy/glen; // outward surface normal
+   const align=nx*lx+ny*ly;
+   if(align<=0)continue;
+   const edge=Math.min(1,glen/edgeDiv);
+   const bright=Math.pow(align,gain)*edge;
+   if(bright<=0.02)continue;
+   const o=(y*mw+x)*4;
+   od[o]=255;od[o+1]=255;od[o+2]=255;od[o+3]=Math.round(255*Math.min(1,bright));
+  }
+ }
+ return out;
+}
 function scatterPaintGrain(sctx,x0,y0,x1,y1,seed,count,darkA,lightA,px){
  // px: each grain speck's size in REAL pixels. Without this, a fixed 1×1
  // rect reads 3× smaller relative to the poster at EXPORT_SCALE=3× than it
@@ -2099,74 +2147,42 @@ function renderMergedPaintStrokes(strokes){
   });
   sctx.globalCompositeOperation='source-over';
 
-  // Old big soft per-point "hg" glow blob deleted here — see note above.
+  // Old big soft per-point "hg" glow blob, and V4's per-stroke coreLayers
+  // line, both deleted here.
 
-  // K/P KOLLEKTIV V4, on user feedback that the highlight line still
-  // looked "too digital"/unnatural even after V3: the previous coreLayers
-  // approach stacked SEVEN nested strokes along the exact same perfectly
-  // smooth offset path, soft/wide fading down to hard/narrow — a textbook
-  // vector glow effect, which is exactly why it read as computer-drawn
-  // rather than a real reflection. An actual highlight on a bent physical
-  // edge is thin, mostly hard-edged (not a soft halo), sits close against
-  // the true boundary rather than the stroke's middle, and its brightness
-  // drifts unevenly along its length instead of glowing uniformly bright
-  // end to end. Rebuilt as one thin line — a single faint antialiasing
-  // bleed instead of seven glow layers — drawn one short segment at a
-  // time so each segment can pull its own width/brightness from smoothed
-  // per-stroke noise instead of every segment sharing one uniform style.
-  valid.forEach(({st,g},si)=>{
-   const n=g.length, linePts=[];
-   g.forEach((p,i)=>{
-    const t=n>1?i/(n-1):.5;
-    if(t<.12||t>.88)return;
-    const w=p.w;
-    // hugs close to the true edge (a rim catching the light) instead of
-    // running down the stroke's middle.
-    linePts.push({x:p.x+Math.cos(PAINT_LIGHT_ANGLE)*w*.33,y:p.y+Math.sin(PAINT_LIGHT_ANGLE)*w*.33,w,t});
-   });
-   if(linePts.length<2)return;
-   const avgW=linePts.reduce((s,p)=>s+p.w,0)/linePts.length;
-   const rnd=mulberry32Paint(4100+((st.seed||0)%9973)+si*77);
-   // A handful of random control values smoothed across the line's length
-   // (rather than per-pixel noise) so nearby segments drift together —
-   // brighter/wider in some stretches, dimmer/thinner in others, the way
-   // an uneven physical edge actually catches light.
-   const NB=8, bands=Array.from({length:NB+1},()=>rnd());
-   const bandAt=t=>{const f=t*NB,i0=Math.min(NB-1,Math.max(0,Math.floor(f))),fr=f-i0;return bands[i0]+(bands[i0+1]-bands[i0])*fr};
-
-   sctx.beginPath();
-   linePts.forEach((p,i)=>{if(i===0)sctx.moveTo(p.x,p.y);else sctx.lineTo(p.x,p.y)});
-   sctx.lineCap='round';sctx.lineJoin='round';
-   sctx.strokeStyle=rgbStrPaint(shineTint,.14);
-   sctx.lineWidth=Math.max(1,avgW*.035);
-   sctx.stroke();
-
-   for(let i=1;i<linePts.length;i++){
-    const a=linePts[i-1],b=linePts[i];
-    const nz=bandAt((a.t+b.t)/2);
-    sctx.beginPath();
-    sctx.moveTo(a.x,a.y);sctx.lineTo(b.x,b.y);
-    sctx.lineCap='round';
-    sctx.strokeStyle=rgbStrPaint(shineTint,Math.min(1,.35+.65*nz));
-    sctx.lineWidth=Math.max(.5,avgW*(.010+.010*nz));
-    sctx.stroke();
-   }
-  });
-
-  valid.forEach(({g})=>{
-   const n=g.length;
-   [0,n-1].forEach(i=>{
-    const p=g[i], w=p.w;
-    const dx=p.x+Math.cos(PAINT_LIGHT_ANGLE)*w*.12,dy=p.y+Math.sin(PAINT_LIGHT_ANGLE)*w*.12;
-    // shrunk well below the old .42×width/0.66-alpha version — this is a
-    // small hard-ish glint at each rounded tip, not another soft glow big
-    // enough to wash the tip out to white.
-    const dr=Math.max(2,w*.22);
-    const dg=sctx.createRadialGradient(dx,dy,0,dx,dy,dr);
-    dg.addColorStop(0,rgbStrPaint(shineTint,0.6)); dg.addColorStop(.55,rgbStrPaint(shineTint,0.22)); dg.addColorStop(1,rgbStrPaint(shineTint,0));
-    sctx.fillStyle=dg; sctx.beginPath();sctx.arc(dx,dy,dr,0,Math.PI*2);sctx.fill();
-   });
-  });
+  // K/P KOLLEKTIV V5, on user feedback with fresh reference photos: every
+  // earlier version (including V4's "thin, hard-edged, jittery" line)
+  // still computed the highlight PER STROKE, tracing an offset of that
+  // one stroke's own centreline. That's fine for a single simple stroke,
+  // but METALL's entire point is strokes drawn close together MELTING
+  // into one merged shape — and once several strokes overlap, giving each
+  // one its own independent highlight line means several unrelated lines
+  // crossing and tangling wherever the strokes overlap, exactly the messy
+  // scribble the user's own screenshot showed. Every reference photo
+  // instead has ONE clean line tracing the actual visible edge of each
+  // rounded strand, regardless of how many brush passes built it. Fixed
+  // properly this time: paintRimHighlightMask() (defined above, next to
+  // paintMaskToCanvas/tintPaintMask) reads the SAME merged alpha mask
+  // already used for shadow/rim/body, so it lights the true silhouette —
+  // one coherent line per visible strand, correctly follows every curl/
+  // junction, and never depends on how many strokes were merged to make
+  // it.
+  const rimHi=paintRimHighlightMask(blurred.data,mw,mh,PAINT_LIGHT_ANGLE,.75,paintRes);
+  // one light smoothing pass over just this mask's alpha — bridges the
+  // small gaps left between neighbouring bright pixels so the light-facing
+  // side reads as one continuous line instead of a scatter of dots, without
+  // softening it anywhere near as much as the full body/rim/shadow blur.
+  // paintRes-scaled for the same reason the sampling step above is.
+  const rimSmoothR=Math.max(1,Math.round(1*paintRes));
+  boxBlurAlphaPass(rimHi.data,mw,mh,rimSmoothR,true);
+  boxBlurAlphaPass(rimHi.data,mw,mh,rimSmoothR,false);
+  const rimHiCanvas=document.createElement('canvas');rimHiCanvas.width=mw;rimHiCanvas.height=mh;
+  rimHiCanvas.getContext('2d').putImageData(rimHi,0,0);
+  const rimHiTinted=tintPaintMask(rimHiCanvas,rgbStrPaint(shineTint));
+  sctx.save();
+  sctx.imageSmoothingEnabled=true;
+  sctx.drawImage(rimHiTinted,0,0,mw,mh,0,0,W,H);
+  sctx.restore();
 
   scatterPaintGrain(sctx,x0,y0,x1,y1,1337,Math.round(7000*paintGrainScale()),0.025,0.035,paintRes);
  }else{
