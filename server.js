@@ -229,16 +229,6 @@ io.on('connection', (socket) => {
     socket.to(room.code).emit('activity', { id: socket.id });
   });
 
-  // "Skicka ljud till alla" — a positive or negative sound reaction,
-  // broadcast to the whole room including the sender (same pattern as
-  // quick-chat), so everyone hears it land at the same moment.
-  socket.on('sound-react', (payload) => {
-    const room = getOrNull(payload && payload.room);
-    if (!room || socket.data.room !== room.code) return;
-    const type = (payload && payload.type === 'negative') ? 'negative' : 'positive';
-    io.to(room.code).emit('sound-react', { type, id: socket.id });
-  });
-
   // Role rotation needs unanimous yes, just like a format change: it
   // moves EVERY participant, not just the requester, so everyone else
   // gets a notification (role-request) and must approve (role-request-vote)

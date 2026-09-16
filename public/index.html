@@ -371,11 +371,6 @@ aside.panel{
         <button data-chat="BRA DÄR">BRA DÄR</button>
         <button data-chat="SPARA DEN HÄR">SPARA</button>
       </div>
-      <div class="rail-label">skicka ljud till alla</div>
-      <div class="chat-buttons">
-        <button data-sound-react="positive">POSITIVT LJUD</button>
-        <button data-sound-react="negative">NEGATIVT LJUD</button>
-      </div>
     </div>
 
     <button class="rail-item rail-tab-toggle" data-tab-target="formatTab">
@@ -606,13 +601,6 @@ function chatSound(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)retur
 function soundClick(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.type='sine';o.frequency.setValueAtTime(340,n);g.gain.setValueAtTime(.05,n);g.gain.exponentialRampToValueAtTime(.001,n+.05);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.06)}catch(e){}}
 function soundAdvance(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;const n=audioCtx.currentTime;[440,660].forEach((f,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='sine';const t=n+i*.09;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(.07,t);g.gain.exponentialRampToValueAtTime(.001,t+.18);o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+.19)})}catch(e){}}
 function soundFinished(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;const n=audioCtx.currentTime;[523,659,784,1046].forEach((f,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='triangle';const t=n+i*.1;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(.09,t);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+.32)})}catch(e){}}
-// K/P KOLLEKTIV: two "send a sound to everyone" reactions (see the
-// POSITIVT LJUD/NEGATIVT LJUD buttons in the chat panel) — same
-// one-liner-oscillator style as the rest, gated by soundEnabled and
-// wrapped in try/catch like every other sound function here.
-function soundPositive(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;const n=audioCtx.currentTime;[523,659,784].forEach((f,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='triangle';const t=n+i*.07;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(.09,t);g.gain.exponentialRampToValueAtTime(.001,t+.22);o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+.24)})}catch(e){}}
-function soundNegative(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.type='sawtooth';o.frequency.setValueAtTime(220,n);o.frequency.exponentialRampToValueAtTime(90,n+.4);g.gain.setValueAtTime(.08,n);g.gain.exponentialRampToValueAtTime(.001,n+.42);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.44)}catch(e){}}
-
 function updateSystemBar(){
  const el=document.getElementById('systemBar');if(!el)return;
  const f=state.format||{size:'A4',orientation:'portrait'},ori=f.orientation==='landscape'?'LANDSKAP':'PORTRÄTT';
@@ -714,8 +702,15 @@ function addChat(msg){
  d.innerHTML=`<span class="chat-time">${esc(t)}</span><span class="chat-name">${esc(msg.name||'ANONYM')}</span>: ${esc(msg.phrase||'')}`;
  f.appendChild(d);f.scrollTop=f.scrollHeight;
  while(f.children.length>30)f.firstChild.remove();
+ // K/P KOLLEKTIV: chatSound() used to be gated to "not my own message",
+ // so the person who actually clicked a chat-fras heard nothing at all —
+ // easy to mistake for "ljudet fungerar inte". Everyone in the room,
+ // sender included, now gets the same little ding (server echoes
+ // quick-chat back to the sender too, same pattern as the old sound-react
+ // buttons), while the "NYTT"-badge stays reserved for messages from
+ // someone else so your own message doesn't badge your own tab.
+ chatSound();
  if(msg.id&&msg.id!==mySocketId){
-  chatSound();
   // K/P KOLLEKTIV: a small red "NYTT" badge on the CHATT tab itself, so a
   // message from someone else doesn't go unnoticed while that tab is
   // closed. Clearing it is wired where the tab actually gets opened, in
@@ -2082,7 +2077,11 @@ function renderMergedPaintStrokes(strokes){
 
  const shadowLayer=paintMaskToCanvas(blurred,shadowCutoff,shadowSteep);
  const rimLayerRaw=paintMaskToCanvas(blurred,rimCutoff,rimSteep);
- const rimLayer=tintPaintMask(rimLayerRaw,rgbStrPaint(mixBlackPaint(base,shiny?.80:.68)));
+ // K/P KOLLEKTIV: shiny (METALL) rim tint lowered from .80 to .52 toward
+ // black — at .80 the thin contour running around every stroke read as a
+ // near-black outline, which is the main thing making the whole drag look
+ // "för svart" even where the fill itself was lighter silver.
+ const rimLayer=tintPaintMask(rimLayerRaw,rgbStrPaint(mixBlackPaint(base,shiny?.52:.68)));
  const bodyLayer=paintMaskToCanvas(blurred,bodyCutoff,bodySteep);
 
  ctx.save();
@@ -2130,8 +2129,14 @@ function renderMergedPaintStrokes(strokes){
   // (3) deleting the big soft per-point "hg" glow outright: the coreLayers
   // streak below (already fairly tight) is now the ONLY highlight, so it
   // reads as one crisp mirror-line instead of a glowing cloud.
+  // K/P KOLLEKTIV: on user feedback ("metall blir lite för svart") — the
+  // two darkest gradient stops (lo/lo2) sat at .82/.55 toward black and
+  // together covered close to a third of the sweep's length (both ends
+  // plus the .80 band), which read as the drag being mostly black with a
+  // silver streak rather than mostly silver with dark shading. Lowered
+  // across the board; hi/hi2/shineTint (the light side) are untouched.
   const hi=mixWhitePaint(base,.60), hi2=mixWhitePaint(base,.28);
-  const dk=mixBlackPaint(base,.20), lo=mixBlackPaint(base,.82), lo2=mixBlackPaint(base,.55);
+  const dk=mixBlackPaint(base,.12), lo=mixBlackPaint(base,.52), lo2=mixBlackPaint(base,.32);
   const shineTint=mixWhitePaint(base,.96);
   const gx0=cx+Math.cos(PAINT_LIGHT_ANGLE)*r,gy0=cy+Math.sin(PAINT_LIGHT_ANGLE)*r;
   const gx1=cx-Math.cos(PAINT_LIGHT_ANGLE)*r,gy1=cy-Math.sin(PAINT_LIGHT_ANGLE)*r;
@@ -3754,22 +3759,43 @@ function chaosTransform(sourceCanvas,vals){
  // looks (dot size, pencil-line softness, wash blur), not whether it's
  // applied at all.
 
- // RASTERISERA — a printed newsprint halftone screen: sample the average
- // colour of each grid cell, draw one solid dot per cell sized by how dark
- // that cell is. Sampling happens on a canvas already downscaled to the
- // dot grid's own resolution (drawImage does the averaging for free) so
- // this stays cheap no matter how big the true canvas is. strength is the
- // dot pitch — small, barely-there dots at low strength, big obvious
- // newsprint dots at high strength.
+ // RASTERISERA — on the user's own reference images this was never meant
+ // to be a clean, printed newsprint screen (the old strict every-cell grid
+ // below): the two references picked were the DENSE/IRREGULAR texture
+ // (dots and dashes scattered unevenly in organic clumps, not aligned rows)
+ // and CONTOUR STIPPLING (dots concentrated tracing the actual edges of a
+ // shape, with open/sparse space in flat interiors — not filled solid
+ // area). Rebuilt around those two ideas together:
+ //  - the same downscaled-grid sampling as before still drives it (cheap
+ //    regardless of true canvas size), but each cell's dot now has a
+ //    random chance of being skipped entirely, and every surviving dot is
+ //    jittered off its cell's centre — so placement itself looks
+ //    scattered/hand-stippled instead of a printed screen's straight rows.
+ //  - a local luminance GRADIENT (same finite-difference idea METALL's
+ //    rim-highlight mask above uses, just evaluated on this coarser dot
+ //    grid) measures how much each cell sits ON an edge/contour. Flat
+ //    interior cells get small, sparse, easy-to-skip dots from darkness
+ //    alone; cells sitting on a real contour get bigger dots and are
+ //    almost never skipped — so contours read as a dotted outline standing
+ //    out from a much emptier interior, instead of the whole shape being
+ //    filled edge-to-edge with tone-matched dots.
+ // strength still scales the base dot pitch — small, barely-there marks at
+ // low strength, bigger and bolder at high strength.
  if(c.raster>0){
    const d=clearDst(),strength=c.raster/100;
-   const cell=Math.round(4+strength*22);
+   const cell=Math.round(5+strength*11);
    const gw=Math.max(1,Math.ceil(Wc/cell)),gh=Math.max(1,Math.ceil(Hc/cell));
    const tiny=document.createElement('canvas');tiny.width=gw;tiny.height=gh;
    const tctx=tiny.getContext('2d',{willReadFrequently:true});
    tctx.imageSmoothingEnabled=true;
    tctx.drawImage(src,0,0,gw,gh);
    const px=tctx.getImageData(0,0,gw,gh).data;
+   const lumAt=(gx,gy)=>{
+     const cx=Math.min(gw-1,Math.max(0,gx)),cy=Math.min(gh-1,Math.max(0,gy));
+     const i=(cy*gw+cx)*4;
+     return (0.299*px[i]+0.587*px[i+1]+0.114*px[i+2])/255;
+   };
+   const rnd=mulberry32Paint(7331);
    // NOTE: only paint paper + a dot where the source actually has any
    // opacity, and scale both by that opacity. src is fully opaque when this
    // runs against the whole poster (background()) or the whole-poster VIBE
@@ -3789,11 +3815,20 @@ function chaosTransform(sourceCanvas,vals){
        d.globalAlpha=aFrac;
        d.fillStyle='#f5f1e4';
        d.fillRect(gx*cell,gy*cell,cell,cell);
-       const rad=(1-lum)*cell*0.62;
-       if(rad>=0.4){
+
+       const gxv=(lumAt(gx+1,gy)-lumAt(gx-1,gy))/2;
+       const gyv=(lumAt(gx,gy+1)-lumAt(gx,gy-1))/2;
+       const edge=Math.min(1,Math.hypot(gxv,gyv)*6);
+
+       const baseRad=(1-lum)*cell*0.30;
+       const edgeRad=edge*cell*0.58;
+       const rad=Math.max(baseRad,edgeRad);
+       const skip=rnd()<(edge>0.25?0.08:0.55);
+       if(rad>=0.5&&!skip){
+         const jx=(rnd()-.5)*cell*0.7,jy=(rnd()-.5)*cell*0.7;
          d.fillStyle=`rgb(${r|0},${g|0},${b|0})`;
          d.beginPath();
-         d.arc(gx*cell+cell/2,gy*cell+cell/2,rad,0,Math.PI*2);
+         d.arc(gx*cell+cell/2+jx,gy*cell+cell/2+jy,rad*(0.75+rnd()*0.5),0,Math.PI*2);
          d.fill();
        }
      }
@@ -3802,12 +3837,28 @@ function chaosTransform(sourceCanvas,vals){
    swap();
  }
 
- // BLYERTS — the classic "pencil sketch" trick: a greyscale base dodge-
- // blended with an inverted, blurred copy of itself. Flat/low-contrast
- // areas blow out to bare paper white (nothing to draw); sharp edges stay
- // dark and read as graphite line-work. strength is the blur radius —
- // tighter, finer lines at low strength; looser, softer sketching at high
- // strength.
+ // BLYERTS — the classic "pencil sketch" dodge-blend trick (unchanged, see
+ // below) is still the tonal BASE — flat/low-contrast areas blow out to
+ // bare paper white, sharp edges stay dark — but on user reference photos
+ // (two real graphite sketches) a flat grey tone read as "digital", not
+ // "pencil": real graphite is built from actual crosshatched strokes and
+ // has visible paper tooth. Two new passes fixed that:
+ //  1) CROSSHATCH — sampled off the same downscaled-grid trick RASTER uses
+ //     below: each cell gets one diagonal pencil stroke once it's dark
+ //     enough, a second CROSSING stroke once it's darker still, and a
+ //     third near-vertical stroke in the very darkest cells — so shading
+ //     reads as layered strokes instead of a flat tone, exactly how the
+ //     reference sketches build up their darks. Small per-cell jitter on
+ //     both position and angle keeps it from reading as a mechanical grid.
+ //  2) PAPER GRAIN — scatterPaintGrain() (already used by AKVARELL below)
+ //     scattered over the whole pass, then masked with 'destination-in'
+ //     against the source's own alpha so a single-category pass (not HELA
+ //     POSTERN) never speckles grain onto the empty page around one
+ //     element — same alpha-awareness fix RASTER needed above.
+ // strength still scales the wash's blur radius AND now also how dark/
+ // opaque the hatching reads (hatch pitch itself stays fixed — a cell
+ // that's already dark just gets a fuller set of strokes, not a coarser
+ // grid).
  if(c.blyerts>0){
    const d=clearDst(),strength=c.blyerts/100;
    const blurPx=Math.round(3+strength*14);
@@ -3823,15 +3874,101 @@ function chaosTransform(sourceCanvas,vals){
    d.globalCompositeOperation='color-dodge';
    d.drawImage(inv,0,0);
    d.globalCompositeOperation='source-over';
+
+   // --- crosshatch shading ---
+   // Sample darkness off the WASH's own result (post dodge-blend), not the
+   // raw source colour: a flat-filled sticker/stroke has one uniform raw
+   // luminance across its whole interior, which hatched the entire shape
+   // as a single uniform density and read as printed wallpaper texture
+   // instead of a sketch. The wash has already done the real work of
+   // deciding what's "flat" (blown out to white) vs "an edge" (stays
+   // dark), so hatching off THAT result concentrates the strokes exactly
+   // where the sketch already reads as shaded/contoured, same as the
+   // reference photos where hatching sits on contours and shadow shapes,
+   // not spread evenly over every filled area.
+   const washSnap=document.createElement('canvas');washSnap.width=Wc;washSnap.height=Hc;
+   washSnap.getContext('2d').drawImage(d.canvas,0,0);
+   const cell=11;
+   const gw=Math.max(1,Math.ceil(Wc/cell)),gh=Math.max(1,Math.ceil(Hc/cell));
+   const tiny=document.createElement('canvas');tiny.width=gw;tiny.height=gh;
+   const tctx=tiny.getContext('2d',{willReadFrequently:true});
+   tctx.imageSmoothingEnabled=true;
+   tctx.drawImage(washSnap,0,0,gw,gh);
+   const hpx=tctx.getImageData(0,0,gw,gh).data;
+   const hrnd=mulberry32Paint(4242);
+   const sFactor=0.45+0.55*strength;
+   d.lineCap='round';
+   for(let gy=0;gy<gh;gy++){
+     for(let gx=0;gx<gw;gx++){
+       const i=(gy*gw+gx)*4;
+       const aFrac=hpx[i+3]/255;
+       if(aFrac<0.03)continue;
+       const lum=hpx[i]/255; // r=g=b after grayscale()
+       if(lum>0.80)continue; // near-white paper: leave it bare
+       const dark=Math.min(1,(0.80-lum)/0.80);
+       const jx=(hrnd()-.5)*cell*.5,jy=(hrnd()-.5)*cell*.5,jang=(hrnd()-.5)*0.5;
+       const cx=gx*cell+cell/2+jx,cy=gy*cell+cell/2+jy,len=cell*0.98;
+       const drawStroke=ang=>{
+         d.beginPath();
+         d.moveTo(cx-Math.cos(ang)*len/2,cy-Math.sin(ang)*len/2);
+         d.lineTo(cx+Math.cos(ang)*len/2,cy+Math.sin(ang)*len/2);
+         d.stroke();
+       };
+       d.strokeStyle=`rgba(35,32,28,${Math.min(0.6,(0.14+dark*0.55)*sFactor)*aFrac})`;
+       d.lineWidth=Math.max(0.6,cell*0.10);
+       drawStroke(Math.PI/4+jang);
+       if(dark>0.5)drawStroke(-Math.PI/4+jang*0.7);
+       if(dark>0.78){
+         d.strokeStyle=`rgba(20,18,15,${Math.min(0.5,dark*0.5)*sFactor*aFrac})`;
+         d.lineWidth=Math.max(0.6,cell*0.08);
+         const ang3=Math.PI/2+jang*0.5;
+         d.beginPath();
+         d.moveTo(cx-Math.cos(ang3)*len*.4,cy-Math.sin(ang3)*len*.4);
+         d.lineTo(cx+Math.cos(ang3)*len*.4,cy+Math.sin(ang3)*len*.4);
+         d.stroke();
+       }
+     }
+   }
+
+   // --- paper grain, alpha-clipped to the source's own silhouette ---
+   const grain=document.createElement('canvas');grain.width=Wc;grain.height=Hc;
+   const grctx=grain.getContext('2d');
+   scatterPaintGrain(grctx,0,0,Wc,Hc,5151,Math.round(15000*Math.max(1,(Wc*Hc)/(794*1123))),0.05,0.055,1);
+   grctx.globalCompositeOperation='destination-in';
+   grctx.drawImage(src,0,0);
+   d.globalCompositeOperation='multiply';
+   d.drawImage(grain,0,0);
+   d.globalCompositeOperation='source-over';
+
    swap();
  }
 
- // AKVARELL — a soft blurred colour wash, a darker/more-blurred "pigment
- // pooling" pass multiplied on top (mostly visible along edges, where the
- // two different blur radii disagree), and a scattered paper grain on top
- // of that — approximates watercolour without simulating any actual paint
- // physics. strength scales both blur radii and how strong the pooling
- // reads.
+ // AKVARELL — on the user's own watercolour reference (soft translucent
+ // petals overlapping with a darker "pigment pooling" edge where they
+ // meet, uneven bloom rather than a perfectly smooth halo) this needed to
+ // read as thin, see-through colour, not an opaque tinted photo. Three
+ // changes from the original single-wash version:
+ //  1) TRANSLUCENCY — the wash itself now draws at partial opacity
+ //     (globalAlpha, not 1) instead of fully replacing the pixel. Because
+ //     this whole per-category canvas gets alpha-composited back onto the
+ //     real poster afterwards, drawing it partially transparent is enough
+ //     to let whatever's underneath (paper, or another element) show
+ //     faintly through — real thin-paint translucency, not a fake tint.
+ //  2) UNEVEN BLOOM — the old single "more-blurred, darker, multiplied"
+ //     pooling pass was perfectly radially smooth around every edge, which
+ //     read as a clean airbrush halo rather than paint bleeding
+ //     unevenly into paper fibres. A second pooling pass at a different
+ //     blur radius AND a small random offset is layered under the first,
+ //     so the combined dark edge is irregular/organic instead of a single
+ //     smooth ring.
+ //  3) paper grain is now alpha-clipped to the source's own silhouette
+ //     with 'destination-in' (same fix RASTER/BLYERTS needed above) — it
+ //     used to scatter across the full padded working canvas regardless
+ //     of where the actual artwork was, which is invisible in HELA
+ //     POSTERN (opaque background either way) but speckled grain onto the
+ //     empty page around a single element/category pass.
+ // strength still scales both blur radii and how strong the pooling reads;
+ // no sparkle/glitter layer added, per user preference (kept as pure paint).
  if(c.akvarell>0){
    const d=clearDst(),strength=c.akvarell/100;
    const blurPx=2+strength*7;
@@ -3839,17 +3976,33 @@ function chaosTransform(sourceCanvas,vals){
    const wctx=wash.getContext('2d');
    wctx.filter=`blur(${blurPx}px) saturate(${1+strength*.5})`;
    wctx.drawImage(src,0,0);
+   d.globalAlpha=0.80;
    d.drawImage(wash,0,0);
-   const pool=document.createElement('canvas');pool.width=Wc;pool.height=Hc;
-   const pctx=pool.getContext('2d');
-   pctx.filter=`blur(${blurPx*2.4}px) brightness(0.8)`;
-   pctx.drawImage(src,0,0);
-   d.globalCompositeOperation='multiply';
-   d.globalAlpha=.35+.35*strength;
-   d.drawImage(pool,0,0);
-   d.globalCompositeOperation='source-over';
    d.globalAlpha=1;
-   scatterPaintGrain(d,0,0,Wc,Hc,9911,Math.round(9000*Math.max(1,(Wc*Hc)/(794*1123))),0.03,0.05,1);
+
+   const poolRnd=mulberry32Paint(6161);
+   const drawPool=(blurMul,alphaMul,dx,dy)=>{
+     const pool=document.createElement('canvas');pool.width=Wc;pool.height=Hc;
+     const pctx=pool.getContext('2d');
+     pctx.filter=`blur(${blurPx*blurMul}px) brightness(0.8)`;
+     pctx.drawImage(src,0,0);
+     d.globalCompositeOperation='multiply';
+     d.globalAlpha=(.30+.30*strength)*alphaMul;
+     d.drawImage(pool,dx,dy);
+     d.globalCompositeOperation='source-over';
+     d.globalAlpha=1;
+   };
+   // two offset/different-radius pooling passes instead of one, so the
+   // combined dark edge bleeds unevenly rather than forming one clean ring.
+   drawPool(2.4,1,0,0);
+   drawPool(1.5,.6,(poolRnd()-.5)*blurPx*1.6,(poolRnd()-.5)*blurPx*1.6);
+
+   const grain=document.createElement('canvas');grain.width=Wc;grain.height=Hc;
+   const grctx=grain.getContext('2d');
+   scatterPaintGrain(grctx,0,0,Wc,Hc,9911,Math.round(9000*Math.max(1,(Wc*Hc)/(794*1123))),0.03,0.05,1);
+   grctx.globalCompositeOperation='destination-in';
+   grctx.drawImage(src,0,0);
+   d.drawImage(grain,0,0);
    swap();
  }
 
@@ -4424,17 +4577,6 @@ C.onpointerleave=finishDrawingGesture;
 
 document.querySelectorAll('[data-chat]').forEach(b=>b.onclick=()=>{primeAudio();if(multiplayerActive())socket.emit('quick-chat',{room:roomCode,phrase:b.dataset.chat})});
 
-// K/P KOLLEKTIV: "skicka ljud till alla" — plays only via the server echo
-// (like quick-chat's own sender-included broadcast), so everyone in the
-// room, sender included, hears it at the same moment.
-document.querySelectorAll('[data-sound-react]').forEach(b=>b.onclick=()=>{
- primeAudio();
- if(multiplayerActive())socket.emit('sound-react',{room:roomCode,type:b.dataset.soundReact});
-});
-socket.on('sound-react',d=>{
- if(d&&d.type==='negative')soundNegative();else soundPositive();
-});
-
 // V11: LJUD on/off, remembered per device (not part of the poster's own
 // state — muting shouldn't be something a saved take carries around).
 function updateSoundToggleUI(){
@@ -4470,6 +4612,12 @@ document.getElementById('requestFormat').onclick=()=>{
    const st=document.getElementById('formatStatus');
    st.textContent=res?.error||'KUNDE INTE BEGÄRA FORMATBYTE';
    setTimeout(()=>{if(!currentFormatVote)st.textContent=''},1800);
+  }else{
+   // K/P KOLLEKTIV: den som SKICKAR en begäran hörde tidigare ingenting
+   // alls — bara mottagarna fick voteSound() via 'format-vote-request'.
+   // Ger nu direkt ljudkvitto här lokalt så avsändaren också hör att
+   // begäran gick iväg, utan att vänta på serverns eko.
+   voteSound();
   }
  });
 };
@@ -4555,6 +4703,9 @@ document.getElementById('chooseRole').onclick=()=>{
      const st=document.getElementById('roleVoteStatus');
      st.textContent=res?.error||'KUNDE INTE BEGÄRA ROLLBYTE';
      setTimeout(()=>st.textContent='',1800);
+   }else{
+     // samma lokala ljudkvitto till avsändaren som BEGÄR FORMATBYTE nedan.
+     voteSound();
    }
  });
 };
@@ -4570,6 +4721,8 @@ document.getElementById('chooseFinish').onclick=()=>{
      const st=document.getElementById('finishStatus');
      st.textContent=res?.error||'KUNDE INTE BEGÄRA ATT AVSLUTA';
      setTimeout(()=>st.textContent='',1800);
+   }else{
+     voteSound();
    }
  });
 };
