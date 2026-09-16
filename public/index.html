@@ -2043,26 +2043,44 @@ function renderMergedPaintStrokes(strokes){
  const cx=(x0+x1)/2,cy=(y0+y1)/2,r=Math.max(20,Math.hypot(x1-x0,y1-y0)/2);
 
  if(shiny){
-  // V9: "more shiny" + the highlights themselves are now tinted from the
-  // brush's own color (shineTint) instead of plain white — a red stroke
-  // gets a warm pinkish shine, a blue stroke a cool pale-blue shine, etc.,
-  // rather than every color looking like the same generic chrome.
-  // K/P KOLLEKTIV: pushed the light/dark contrast and highlight strength
-  // further TWICE on user request ("mer glossy och shiny", then again with
-  // liquid-chrome/mercury reference photos) — near-white highs, near-black
-  // lows, an extra gradient stop so the light sweeps across in two bands
-  // rather than one flat linear fade (closer to how a curved metal surface
-  // actually catches light), and a tighter/brighter core streak + hotspot
-  // below.
-  const hi=mixWhitePaint(base,.95), lo=mixBlackPaint(base,.86);
+  // K/P KOLLEKTIV V3 — full rework, not just another round of "more shiny"
+  // number-tuning. The previous version stacked THREE separate near-white
+  // soft-glow layers along the entire length of every stroke: the
+  // background sweep's own near-white end (hi=95% white), a big soft
+  // radial "hg" blob repeated at literally every point along the stroke
+  // (radius up to .66×width, alpha up to .85, fading out only over the
+  // outer 30% of that radius), and a soft end-cap glow on top of that. All
+  // three together painted a continuous glowing-white tube the full length
+  // of every stroke, which is why it read as pale, blurred plastic/
+  // marshmallow instead of metal even after two earlier tuning passes: the
+  // base colour barely survived under that much stacked white, and none of
+  // it had a hard edge the way an actual mirror reflection does. Real
+  // liquid-metal/chrome is the opposite of that — mostly a clearly-tinted
+  // mid-tone, with reflections that are NARROW, HARD-EDGED and only cover a
+  // small fraction of the surface. Fixed here by (1) toning the sweep down
+  // so the coloured mid-tone dominates instead of white, (2) turning the
+  // smooth fade into a couple of hard-edged banded reflection stripes —
+  // sharp jump in, flat, sharp jump out — like a curved surface catching
+  // two or three distinct light edges rather than one soft gradient, and
+  // (3) deleting the big soft per-point "hg" glow outright: the coreLayers
+  // streak below (already fairly tight) is now the ONLY highlight, so it
+  // reads as one crisp mirror-line instead of a glowing cloud.
+  const hi=mixWhitePaint(base,.60), hi2=mixWhitePaint(base,.28);
+  const dk=mixBlackPaint(base,.20), lo=mixBlackPaint(base,.82), lo2=mixBlackPaint(base,.55);
   const shineTint=mixWhitePaint(base,.96);
   const gx0=cx+Math.cos(PAINT_LIGHT_ANGLE)*r,gy0=cy+Math.sin(PAINT_LIGHT_ANGLE)*r;
   const gx1=cx-Math.cos(PAINT_LIGHT_ANGLE)*r,gy1=cy-Math.sin(PAINT_LIGHT_ANGLE)*r;
   const grad=sctx.createLinearGradient(gx0,gy0,gx1,gy1);
-  grad.addColorStop(0,rgbStrPaint(hi));
-  grad.addColorStop(.16,rgbStrPaint(mixWhitePaint(base,.42)));
-  grad.addColorStop(.50,rgbStrPaint(base));
-  grad.addColorStop(.82,rgbStrPaint(mixBlackPaint(base,.38)));
+  grad.addColorStop(0,rgbStrPaint(lo));
+  grad.addColorStop(.11,rgbStrPaint(lo));
+  grad.addColorStop(.15,rgbStrPaint(hi));
+  grad.addColorStop(.25,rgbStrPaint(hi));
+  grad.addColorStop(.30,rgbStrPaint(dk));
+  grad.addColorStop(.47,rgbStrPaint(base));
+  grad.addColorStop(.60,rgbStrPaint(dk));
+  grad.addColorStop(.67,rgbStrPaint(hi2));
+  grad.addColorStop(.74,rgbStrPaint(hi2));
+  grad.addColorStop(.80,rgbStrPaint(lo2));
   grad.addColorStop(1,rgbStrPaint(lo));
   sctx.fillStyle=grad; sctx.fillRect(0,0,W,H);
 
@@ -2081,26 +2099,13 @@ function renderMergedPaintStrokes(strokes){
   });
   sctx.globalCompositeOperation='source-over';
 
-  valid.forEach(({g})=>{
-   const n=g.length;
-   g.forEach((p,i)=>{
-    const t=n>1?i/(n-1):.5, w=p.w;
-    const hx=p.x+Math.cos(PAINT_LIGHT_ANGLE)*w*.18,hy=p.y+Math.sin(PAINT_LIGHT_ANGLE)*w*.18;
-    const hr=Math.max(3,w*.66);
-    const hg=sctx.createRadialGradient(hx,hy,0,hx,hy,hr);
-    hg.addColorStop(0,rgbStrPaint(shineTint,0.85));
-    hg.addColorStop(.4,rgbStrPaint(shineTint,0.42));
-    hg.addColorStop(.7,rgbStrPaint(shineTint,0.16));
-    hg.addColorStop(1,rgbStrPaint(shineTint,0));
-    sctx.fillStyle=hg; sctx.beginPath();sctx.arc(hx,hy,hr,0,Math.PI*2);sctx.fill();
-   });
-  });
+  // Old big soft per-point "hg" glow blob deleted here — see note above.
+  // The hard-edged coreLayers streak just below is now the only highlight.
 
-  // Tightened and brightened vs. the original set — a narrower, hotter
-  // core (down to k:.010 at nearly full alpha) reads as a crisp mirror-
-  // line highlight instead of a soft glow, the "sharp white streak" look
-  // in the liquid-chrome reference photos.
-  const coreLayers=[{k:.32,a:.18},{k:.22,a:.26},{k:.14,a:.37},{k:.09,a:.50},{k:.05,a:.66},{k:.026,a:.82},{k:.010,a:.97}];
+  // Narrower, harder-edged core than before — the two lowest k values now
+  // sit at FULL alpha (was .82/.97) so the very centre of the streak is a
+  // flat-white mirror line with an abrupt edge, not one more soft fade.
+  const coreLayers=[{k:.26,a:.16},{k:.17,a:.24},{k:.11,a:.35},{k:.07,a:.50},{k:.04,a:.68},{k:.020,a:.88},{k:.008,a:1}];
   valid.forEach(({g})=>{
    const n=g.length, linePts=[];
    g.forEach((p,i)=>{
@@ -2126,9 +2131,12 @@ function renderMergedPaintStrokes(strokes){
    [0,n-1].forEach(i=>{
     const p=g[i], w=p.w;
     const dx=p.x+Math.cos(PAINT_LIGHT_ANGLE)*w*.12,dy=p.y+Math.sin(PAINT_LIGHT_ANGLE)*w*.12;
-    const dr=Math.max(2,w*.42);
+    // shrunk well below the old .42×width/0.66-alpha version — this is a
+    // small hard-ish glint at each rounded tip, not another soft glow big
+    // enough to wash the tip out to white.
+    const dr=Math.max(2,w*.22);
     const dg=sctx.createRadialGradient(dx,dy,0,dx,dy,dr);
-    dg.addColorStop(0,rgbStrPaint(shineTint,0.66)); dg.addColorStop(1,rgbStrPaint(shineTint,0));
+    dg.addColorStop(0,rgbStrPaint(shineTint,0.6)); dg.addColorStop(.55,rgbStrPaint(shineTint,0.22)); dg.addColorStop(1,rgbStrPaint(shineTint,0));
     sctx.fillStyle=dg; sctx.beginPath();sctx.arc(dx,dy,dr,0,Math.PI*2);sctx.fill();
    });
   });
