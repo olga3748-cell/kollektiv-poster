@@ -1703,12 +1703,29 @@ function noise(seed,x){return Math.sin(x*.73+rand(seed)*6.28)*.52+Math.sin(x*.21
 function qnoise(seed,x){ // chunkier, sharper coherent signal for HÅRD
  let n=noise(seed,x); return Math.sign(n)*Math.pow(Math.abs(n),.58);
 }
+// K/P KOLLEKTIV: the .s (arc length) this stores is fed into geom() and
+// bodyPath() purely as a NOISE PHASE — every "organic"/"twist"/"sticky"/
+// "taggig"/edge-wobble signal in the whole PAINTBRUSH pipeline is
+// Math.sin/noise(seed, s/someFixedPeriod). Those fixed periods (19, 28,
+// 34-20*T, 9, 30-18*J, …) were tuned against the live-editing canvas —
+// but raw pixel arc length grows right along with the canvas at export's
+// 3× supersampling (stroke points are pre-scaled by scaleElementCoords
+// before render()), while the period constants stay fixed. So a stroke
+// that wobbles/notches N times over its length while editing wobbles 3×
+// as many times over the SAME visual stroke in the exported file — a much
+// busier, more jagged-looking path than what was on screen, exactly the
+// live-vs-export mismatch this reports. Same class of bug as the blur-
+// radius/grain-size fixes elsewhere in this file (paintRes), same fix:
+// normalize arc length back to the ~794px reference width right here, at
+// the one place .s is produced, so every downstream noise(seed, s/N) call
+// sees the resolution it was tuned for without needing its own fix.
 function sample(points,step=4){
  if(points.length<2)return points.map(p=>({...p,s:0}));
+ const paintRes=W/794;
  let out=[],dist=0;
  for(let i=1;i<points.length;i++){
   let a=points[i-1],b=points[i],dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy),n=Math.max(1,Math.ceil(L/step));
-  for(let j=(i===1?0:1);j<=n;j++){let t=j/n;out.push({x:a.x+dx*t,y:a.y+dy*t,s:dist+L*t})}
+  for(let j=(i===1?0:1);j<=n;j++){let t=j/n;out.push({x:a.x+dx*t,y:a.y+dy*t,s:(dist+L*t)/paintRes})}
   dist+=L;
  }
  return out;
