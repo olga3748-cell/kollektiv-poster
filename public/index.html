@@ -1918,6 +1918,13 @@ function hexToRgbPaint(hex){
 function mixWhitePaint(c,t){return{r:c.r+(255-c.r)*t,g:c.g+(255-c.g)*t,b:c.b+(255-c.b)*t}}
 function mixBlackPaint(c,t){return{r:c.r*(1-t),g:c.g*(1-t),b:c.b*(1-t)}}
 function rgbStrPaint(c,a=1){return `rgba(${c.r|0},${c.g|0},${c.b|0},${a})`}
+function hslToRgbPaint(h,s,l){
+ h=((h%360)+360)%360;s=Math.max(0,Math.min(1,s));l=Math.max(0,Math.min(1,l));
+ const k=n=>(n+h/30)%12;
+ const a=s*Math.min(l,1-l);
+ const f=n=>l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)));
+ return {r:f(0)*255,g:f(8)*255,b:f(4)*255};
+}
 
 const PAINT_MASK_SCALE=.38; // downscaled working res, same trick as BAKGRUND's blur — cheap enough for live redraws.
  // Scales with W/H, so exportAtScale()'s supersampled export canvas gets a
@@ -3818,7 +3825,14 @@ function chaosTransform(sourceCanvas,vals){
  // grid).
  if(c.blyerts>0){
    const d=clearDst(),strength=c.blyerts/100;
-   const blurPx=Math.round(3+strength*14);
+   // K/P KOLLEKTIV: lowered from 3+strength*14 (max 17px) on user feedback
+   // that thin hand-drawn TECKNING strokes (a few px to ~20px wide) came
+   // out faint/washed-out -- a blur radius comparable to or bigger than the
+   // stroke's own width spreads its darkness out so much that the dodge-
+   // blend "edge detector" barely registers it as an edge at all. A gentler
+   // max keeps the same soft-sketch quality on filled shapes/text while
+   // leaving thin strokes actually visible.
+   const blurPx=Math.round(2+strength*8);
    const gray=document.createElement('canvas');gray.width=Wc;gray.height=Hc;
    const gctx=gray.getContext('2d');
    gctx.filter='grayscale(1) contrast(1.05)';
@@ -3860,6 +3874,26 @@ function chaosTransform(sourceCanvas,vals){
    // not spread evenly over every filled area.
    const washSnap=document.createElement('canvas');washSnap.width=Wc;washSnap.height=Hc;
    washSnap.getContext('2d').drawImage(d.canvas,0,0);
+
+   // K/P KOLLEKTIV: on user feedback that TECKNING (hand-drawn strokes) could
+   // look "nicer" under BLYERTS -- a single crisp wash edge reads as a traced
+   // vector outline, not a pencil line. Real pencil work never lands one
+   // clean line: the hand wobbles and often goes over a contour twice. Redraw
+   // the wash a couple of times at small random offsets via multiply (so it
+   // only ever darkens, never lightens) -- every edge/line in the wash comes
+   // out as a soft double/wobbly line instead of one hairline, while flat
+   // near-white areas (already blown out) are barely touched since there's
+   // almost nothing there to multiply.
+   const sketchRnd=mulberry32Paint(9090);
+   d.globalCompositeOperation='multiply';
+   for(let i=0;i<2;i++){
+     d.globalAlpha=0.22;
+     const ox=(sketchRnd()-.5)*3,oy=(sketchRnd()-.5)*3;
+     d.drawImage(washSnap,ox,oy);
+   }
+   d.globalCompositeOperation='source-over';
+   d.globalAlpha=1;
+
    const cell=11;
    const gw=Math.max(1,Math.ceil(Wc/cell)),gh=Math.max(1,Math.ceil(Hc/cell));
    const tiny=document.createElement('canvas');tiny.width=gw;tiny.height=gh;
@@ -4058,16 +4092,25 @@ function chaosTransform(sourceCanvas,vals){
    n=Math.max(1,n);
    const avg={r:rs/n,g:gs/n,b:bs/n};
    const towards=(col,t,target)=>({r:col.r+(target.r-col.r)*t,g:col.g+(target.g-col.g)*t,b:col.b+(target.b-col.b)*t});
-   // K/P KOLLEKTIV: pushing only 50% of the way from a pre-darkened/
-   // lightened avg toward the target stops came out muddy/desaturated in
-   // testing — averaging several different poster hues together usually
-   // lands on a grayish colour to begin with, and blending that 50/50 with
-   // the vivid target just produces a muted version of the target instead
-   // of the punchy neon-duotone look the reference has. Pushing straight
-   // from the raw average by a much larger fraction keeps a hint of the
-   // poster's own hue while letting the vivid target colour dominate.
-   const darkStop=towards(avg,.85,{r:20,g:8,b:46});
-   const lightStop=towards(avg,.85,{r:180,g:255,b:120});
+   // K/P KOLLEKTIV: on user feedback ("blir duoton alltid grön? slidern
+   // skulle kunna ändra färgen") — the two target stops used to be FIXED
+   // (deep indigo + neon green) no matter what the strength slider did, so
+   // the effect always landed on the same colour pair and the slider only
+   // ever changed the blur. Now the slider itself picks the colour: it
+   // walks a hue wheel (0.66 turns, so the two ends of the slider land on
+   // clearly different hues instead of wrapping back to the same one), and
+   // the light stop sits a bit further round the wheel from the dark stop
+   // (an analogous split, not the same hue at two lightnesses) so every
+   // position still reads as a punchy two-colour duotone rather than a
+   // single-hue fade. Pushing the poster's own average colour 85% of the
+   // way toward these hue-picked stops (same fraction as before) keeps a
+   // hint of the artwork's own colour while letting the chosen duotone hue
+   // dominate.
+   const hue=strength*330;
+   const rawDark=hslToRgbPaint(hue,0.62,0.13);
+   const rawLight=hslToRgbPaint((hue+42)%360,0.70,0.74);
+   const darkStop=towards(avg,.85,rawDark);
+   const lightStop=towards(avg,.85,rawLight);
 
    const gray=document.createElement('canvas');gray.width=Wc;gray.height=Hc;
    const gctx=gray.getContext('2d');
@@ -4084,7 +4127,11 @@ function chaosTransform(sourceCanvas,vals){
    }
    gctx.putImageData(gidata,0,0);
 
-   const blurPx=1+strength*9;
+   // K/P KOLLEKTIV: blur used to scale with strength too, back when strength
+   // only controlled intensity. Now strength is the colour dial, so the
+   // blur stays a small fixed softening (keeps the poster print-like
+   // without the slider also fighting over how soft it looks).
+   const blurPx=2.5;
    d.filter=`blur(${blurPx}px)`;
    d.drawImage(gray,0,0);
    d.filter='none';
