@@ -2100,30 +2100,57 @@ function renderMergedPaintStrokes(strokes){
   sctx.globalCompositeOperation='source-over';
 
   // Old big soft per-point "hg" glow blob deleted here — see note above.
-  // The hard-edged coreLayers streak just below is now the only highlight.
 
-  // Narrower, harder-edged core than before — the two lowest k values now
-  // sit at FULL alpha (was .82/.97) so the very centre of the streak is a
-  // flat-white mirror line with an abrupt edge, not one more soft fade.
-  const coreLayers=[{k:.26,a:.16},{k:.17,a:.24},{k:.11,a:.35},{k:.07,a:.50},{k:.04,a:.68},{k:.020,a:.88},{k:.008,a:1}];
-  valid.forEach(({g})=>{
+  // K/P KOLLEKTIV V4, on user feedback that the highlight line still
+  // looked "too digital"/unnatural even after V3: the previous coreLayers
+  // approach stacked SEVEN nested strokes along the exact same perfectly
+  // smooth offset path, soft/wide fading down to hard/narrow — a textbook
+  // vector glow effect, which is exactly why it read as computer-drawn
+  // rather than a real reflection. An actual highlight on a bent physical
+  // edge is thin, mostly hard-edged (not a soft halo), sits close against
+  // the true boundary rather than the stroke's middle, and its brightness
+  // drifts unevenly along its length instead of glowing uniformly bright
+  // end to end. Rebuilt as one thin line — a single faint antialiasing
+  // bleed instead of seven glow layers — drawn one short segment at a
+  // time so each segment can pull its own width/brightness from smoothed
+  // per-stroke noise instead of every segment sharing one uniform style.
+  valid.forEach(({st,g},si)=>{
    const n=g.length, linePts=[];
    g.forEach((p,i)=>{
     const t=n>1?i/(n-1):.5;
-    if(t<.14||t>.86)return;
+    if(t<.12||t>.88)return;
     const w=p.w;
-    linePts.push({x:p.x+Math.cos(PAINT_LIGHT_ANGLE)*w*.22,y:p.y+Math.sin(PAINT_LIGHT_ANGLE)*w*.22,w});
+    // hugs close to the true edge (a rim catching the light) instead of
+    // running down the stroke's middle.
+    linePts.push({x:p.x+Math.cos(PAINT_LIGHT_ANGLE)*w*.33,y:p.y+Math.sin(PAINT_LIGHT_ANGLE)*w*.33,w,t});
    });
    if(linePts.length<2)return;
    const avgW=linePts.reduce((s,p)=>s+p.w,0)/linePts.length;
-   coreLayers.forEach(L=>{
+   const rnd=mulberry32Paint(4100+((st.seed||0)%9973)+si*77);
+   // A handful of random control values smoothed across the line's length
+   // (rather than per-pixel noise) so nearby segments drift together —
+   // brighter/wider in some stretches, dimmer/thinner in others, the way
+   // an uneven physical edge actually catches light.
+   const NB=8, bands=Array.from({length:NB+1},()=>rnd());
+   const bandAt=t=>{const f=t*NB,i0=Math.min(NB-1,Math.max(0,Math.floor(f))),fr=f-i0;return bands[i0]+(bands[i0+1]-bands[i0])*fr};
+
+   sctx.beginPath();
+   linePts.forEach((p,i)=>{if(i===0)sctx.moveTo(p.x,p.y);else sctx.lineTo(p.x,p.y)});
+   sctx.lineCap='round';sctx.lineJoin='round';
+   sctx.strokeStyle=rgbStrPaint(shineTint,.14);
+   sctx.lineWidth=Math.max(1,avgW*.035);
+   sctx.stroke();
+
+   for(let i=1;i<linePts.length;i++){
+    const a=linePts[i-1],b=linePts[i];
+    const nz=bandAt((a.t+b.t)/2);
     sctx.beginPath();
-    linePts.forEach((p,i)=>{if(i===0)sctx.moveTo(p.x,p.y);else sctx.lineTo(p.x,p.y)});
-    sctx.lineCap='round';sctx.lineJoin='round';
-    sctx.strokeStyle=rgbStrPaint(shineTint,L.a);
-    sctx.lineWidth=Math.max(1,avgW*L.k);
+    sctx.moveTo(a.x,a.y);sctx.lineTo(b.x,b.y);
+    sctx.lineCap='round';
+    sctx.strokeStyle=rgbStrPaint(shineTint,Math.min(1,.35+.65*nz));
+    sctx.lineWidth=Math.max(.5,avgW*(.010+.010*nz));
     sctx.stroke();
-   });
+   }
   });
 
   valid.forEach(({g})=>{
