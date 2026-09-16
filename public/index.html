@@ -914,11 +914,18 @@ const TEXTURE_META=Object.fromEntries(TEXTURE_KINDS.map(([k,label,fam,hint])=>[k
 // halftone, pencil sketch, watercolour) — a different KIND of effect from
 // every one above, which all displace/repeat/recolour the existing pixels
 // but never restyle the image itself.
-const CHAOS_KEYS=['glitch','warp','melt','pixel','dubbel','blod','vav','split','virvel','spegel','raster','blyerts','akvarell'];
-// The three "whole poster vibe" filters — see render()'s applyGlobal block,
+// K/P KOLLEKTIV: GLITCH/FÄRGSPLIT/SPEGEL removed on user request (least-used
+// of the set) and replaced with three more VIBE_KEYS restyle filters —
+// RISO/DUOTON/AFFISCH — built from further inspiration references, the same
+// way RASTER/BLYERTS/AKVARELL were. See the VIBE_KEYS comment below for why
+// these join that list instead of the displace-style list.
+const CHAOS_KEYS=['warp','melt','pixel','dubbel','blod','vav','virvel','raster','blyerts','akvarell','riso','duoton','affisch'];
+// The six "whole poster vibe" filters — see render()'s applyGlobal block,
 // which gives these their own full-canvas pass instead of the foreground-
-// diff pass every other CHAOS_KEYS effect uses.
-const VIBE_KEYS=['raster','blyerts','akvarell'];
+// diff pass every other CHAOS_KEYS effect uses. RISO/DUOTON/AFFISCH are
+// restyle filters exactly like RASTER/BLYERTS/AKVARELL (not displacement
+// effects like WARP/MELT/VIRVEL), so they belong in this list too.
+const VIBE_KEYS=['raster','blyerts','akvarell','riso','duoton','affisch'];
 function zeroChaosLayer(){return Object.fromEntries(CHAOS_KEYS.map(k=>[k,0]))}
 // V11: REMIX — a one-click alternative to hand-tuning every slider. Instead
 // of a flat wash of every effect at once (which tends to just look like
@@ -3593,20 +3600,6 @@ function chaosTransform(sourceCanvas,vals){
    swap();
  }
 
- // GLITCH — deterministic horizontal block jumps.
- if(c.glitch>0){
-   const d=clearDst(),strength=c.glitch/100;
-   d.drawImage(src,0,0);
-   const bands=5+Math.floor(strength*22);
-   for(let i=0;i<bands;i++){
-     const y=Math.floor(rand(730000+i*37+c.glitch)*Hc);
-     const h=3+Math.floor(rand(731000+i*41+c.glitch)*Math.max(5,32*strength));
-     const dx=(rand(732000+i*43+c.glitch)-.5)*strength*220;
-     d.drawImage(src,0,y,Wc,h,dx,y,Wc,h);
-   }
-   swap();
- }
-
  // PIXEL — true low-resolution downsample/upscale.
  if(c.pixel>0){
    const d=clearDst(),strength=c.pixel/100;
@@ -3682,35 +3675,9 @@ function chaosTransform(sourceCanvas,vals){
    swap();
  }
 
- // K/P KOLLEKTIV: three new effect types, on user request — a different
- // underlying mechanic each, not just variations on the sine-wave-shift
- // technique the nine above already share.
-
- // FÄRGSPLIT — chromatic aberration: pulls the red/green/blue channels of
- // the image sideways by different amounts, so edges fringe with colour
- // instead of the whole picture moving together. Each channel is isolated
- // by multiplying the source against a pure R/G/B fill (multiply zeroes
- // the other two channels, leaves that one untouched), then the three
- // shifted, isolated channels are added back together with 'screen'.
- if(c.split>0){
-   const d=clearDst(),strength=c.split/100;
-   const off=6+strength*54;
-   const isolate=color=>{
-     const t=document.createElement('canvas');t.width=Wc;t.height=Hc;
-     const tc=t.getContext('2d');
-     tc.drawImage(src,0,0);
-     tc.globalCompositeOperation='multiply';
-     tc.fillStyle=color;tc.fillRect(0,0,Wc,Hc);
-     return t;
-   };
-   const rC=isolate('#ff0000'),gC=isolate('#00ff00'),bC=isolate('#0000ff');
-   d.globalCompositeOperation='screen';
-   d.drawImage(rC,-off,off*.18);
-   d.drawImage(gC,0,-off*.12);
-   d.drawImage(bC,off,off*.05);
-   d.globalCompositeOperation='source-over';
-   swap();
- }
+ // K/P KOLLEKTIV: FÄRGSPLIT (chromatic aberration) removed on user request
+ // (least-used of the set, replaced with RISO/DUOTON/AFFISCH down in the
+ // VIBE section below).
 
  // VIRVEL — a radial swirl around the poster's centre: concentric rings
  // are each rotated by their own angle (more twist closer to the centre),
@@ -3736,28 +3703,18 @@ function chaosTransform(sourceCanvas,vals){
    swap();
  }
 
- // SPEGEL — true bilateral symmetry: the right half is mirrored back over
- // the left half (blended by strength), unlike every effect above which
- // keeps the original silhouette and only displaces/repeats/recolours it.
- if(c.spegel>0){
-   const d=clearDst(),strength=c.spegel/100;
-   d.drawImage(src,0,0);
-   d.save();
-   d.beginPath();d.rect(0,0,Wc/2,Hc);d.clip();
-   d.globalAlpha=strength;
-   d.translate(Wc,0);d.scale(-1,1);
-   d.drawImage(src,0,0);
-   d.restore();
-   swap();
- }
+ // K/P KOLLEKTIV: SPEGEL (bilateral mirror symmetry) removed on user
+ // request (least-used of the set, replaced with RISO/DUOTON/AFFISCH below).
 
- // K/P KOLLEKTIV: three "whole poster vibe" filters, on user request — a
- // different KIND of effect from the ten above (which all displace, repeat
- // or recolour-shift the existing pixels but never restyle the image
- // itself). Each one fully replaces the visible result at any nonzero
- // strength, same design as PIXEL above — strength tunes HOW the style
- // looks (dot size, pencil-line softness, wash blur), not whether it's
- // applied at all.
+ // K/P KOLLEKTIV: six "whole poster vibe" filters, on user request — a
+ // different KIND of effect from the displacement effects above (which all
+ // displace, repeat or recolour-shift the existing pixels but never restyle
+ // the image itself). Each one fully replaces the visible result at any
+ // nonzero strength, same design as PIXEL above — strength tunes HOW the
+ // style looks (dot size, pencil-line softness, wash blur), not whether
+ // it's applied at all. RASTER/BLYERTS/AKVARELL came from an earlier round
+ // of reference images; RISO/DUOTON/AFFISCH (below AKVARELL) came from a
+ // second round, replacing GLITCH/FÄRGSPLIT/SPEGEL.
 
  // RASTERISERA — on the user's own reference images this was never meant
  // to be a clean, printed newsprint screen (the old strict every-cell grid
@@ -3874,6 +3831,21 @@ function chaosTransform(sourceCanvas,vals){
    d.globalCompositeOperation='color-dodge';
    d.drawImage(inv,0,0);
    d.globalCompositeOperation='source-over';
+   // K/P KOLLEKTIV: on user feedback — the dodge-blend above was tuned
+   // against PHOTOS, where a truly flat/uniform patch is rare, so blowing
+   // it out to bare paper white barely shows. This app's actual content is
+   // mostly flat-filled vector shapes (stickers, strokes, blocks of text),
+   // where "flat colour" is the NORMAL case, not the exception — so almost
+   // every filled area was vanishing to solid white and only outlines
+   // survived. Multiplying a little of the original tone back in gives
+   // every flat fill a visible grey/tint proportional to its own darkness
+   // again (a light fill stays near-white, a dark fill stays visibly
+   // shaded), while edges — already dark before this — barely change.
+   d.globalCompositeOperation='multiply';
+   d.globalAlpha=0.4;
+   d.drawImage(gray,0,0);
+   d.globalCompositeOperation='source-over';
+   d.globalAlpha=1;
 
    // --- crosshatch shading ---
    // Sample darkness off the WASH's own result (post dodge-blend), not the
@@ -4006,6 +3978,200 @@ function chaosTransform(sourceCanvas,vals){
    swap();
  }
 
+ // RISO — from a riso-printed zine reference: flat, posterized ink colours
+ // (a riso plate has no continuous tone, just a handful of flat spot
+ // colours), a visibly OFFSET "key" plate and a bright plate (real riso
+ // prints from separate screens that never quite line up, so edges fringe
+ // with colour instead of every layer sitting in perfect registration —
+ // same idea as the old FÄRGSPLIT this replaces, but built from flat
+ // colour PLATES instead of splitting R/G/B channels), and a fibrous ink
+ // grain (alpha-clipped to the source's own silhouette, same fix as
+ // RASTER/BLYERTS/AKVARELL above). strength scales the plate offset and
+ // how heavy the ink grain reads.
+ if(c.riso>0){
+   const d=clearDst(),strength=c.riso/100;
+   const levels=4,step=255/(levels-1);
+   const post=document.createElement('canvas');post.width=Wc;post.height=Hc;
+   const poctx=post.getContext('2d');
+   poctx.drawImage(src,0,0);
+   const idata=poctx.getImageData(0,0,Wc,Hc);
+   const dat=idata.data;
+   for(let i=0;i<dat.length;i+=4){
+     if(dat[i+3]<5)continue;
+     dat[i]=Math.round(Math.round(dat[i]/step)*step);
+     dat[i+1]=Math.round(Math.round(dat[i+1]/step)*step);
+     dat[i+2]=Math.round(Math.round(dat[i+2]/step)*step);
+   }
+   poctx.putImageData(idata,0,0);
+   d.drawImage(post,0,0);
+
+   const off=2+strength*6;
+   const keyplate=document.createElement('canvas');keyplate.width=Wc;keyplate.height=Hc;
+   const kctx=keyplate.getContext('2d');
+   kctx.filter='grayscale(1) brightness(0.5) contrast(1.3)';
+   kctx.drawImage(src,0,0);
+   d.globalCompositeOperation='multiply';
+   d.globalAlpha=.6;
+   d.drawImage(keyplate,-off,off*0.6);
+   d.globalCompositeOperation='source-over';
+   d.globalAlpha=1;
+
+   const glowplate=document.createElement('canvas');glowplate.width=Wc;glowplate.height=Hc;
+   const gpctx=glowplate.getContext('2d');
+   gpctx.filter='saturate(1.7) brightness(1.15)';
+   gpctx.drawImage(src,0,0);
+   d.globalCompositeOperation='screen';
+   d.globalAlpha=.3;
+   d.drawImage(glowplate,off,-off*0.4);
+   d.globalCompositeOperation='source-over';
+   d.globalAlpha=1;
+
+   const grainR=document.createElement('canvas');grainR.width=Wc;grainR.height=Hc;
+   const grctxR=grainR.getContext('2d');
+   scatterPaintGrain(grctxR,0,0,Wc,Hc,3131,Math.round(16000*(.4+.6*strength)*Math.max(1,(Wc*Hc)/(794*1123))),0.07,0.05,1);
+   grctxR.globalCompositeOperation='destination-in';
+   grctxR.drawImage(src,0,0);
+   d.globalCompositeOperation='multiply';
+   d.drawImage(grainR,0,0);
+   d.globalCompositeOperation='source-over';
+   swap();
+ }
+
+ // DUOTON — from a blurred neon-duotone photo reference: the source's
+ // luminance is mapped through a two-colour gradient (like a photographic
+ // duotone print) instead of just desaturating, plus a soft blur for that
+ // dreamy, slightly-out-of-focus glow. The two gradient stops aren't one
+ // fixed colour pair stamped on every poster — they're derived from the
+ // source's OWN average colour (sampled off a tiny downscaled copy, same
+ // trick RASTER/BLYERTS use for their grid), pushed hard toward a deep
+ // shadow tone and a bright neon tone, so the result still relates to
+ // whatever's actually on the poster instead of always coming out the same
+ // violet-and-green regardless of content. strength scales the blur/glow.
+ if(c.duoton>0){
+   const d=clearDst(),strength=c.duoton/100;
+   const tiny=document.createElement('canvas');tiny.width=20;tiny.height=20;
+   const ttx=tiny.getContext('2d',{willReadFrequently:true});
+   ttx.drawImage(src,0,0,20,20);
+   const tdat=ttx.getImageData(0,0,20,20).data;
+   let rs=0,gs=0,bs=0,n=0;
+   for(let i=0;i<tdat.length;i+=4){if(tdat[i+3]<10)continue;rs+=tdat[i];gs+=tdat[i+1];bs+=tdat[i+2];n++;}
+   n=Math.max(1,n);
+   const avg={r:rs/n,g:gs/n,b:bs/n};
+   const towards=(col,t,target)=>({r:col.r+(target.r-col.r)*t,g:col.g+(target.g-col.g)*t,b:col.b+(target.b-col.b)*t});
+   // K/P KOLLEKTIV: pushing only 50% of the way from a pre-darkened/
+   // lightened avg toward the target stops came out muddy/desaturated in
+   // testing — averaging several different poster hues together usually
+   // lands on a grayish colour to begin with, and blending that 50/50 with
+   // the vivid target just produces a muted version of the target instead
+   // of the punchy neon-duotone look the reference has. Pushing straight
+   // from the raw average by a much larger fraction keeps a hint of the
+   // poster's own hue while letting the vivid target colour dominate.
+   const darkStop=towards(avg,.85,{r:20,g:8,b:46});
+   const lightStop=towards(avg,.85,{r:180,g:255,b:120});
+
+   const gray=document.createElement('canvas');gray.width=Wc;gray.height=Hc;
+   const gctx=gray.getContext('2d');
+   gctx.filter='grayscale(1) contrast(1.1)';
+   gctx.drawImage(src,0,0);
+   const gidata=gctx.getImageData(0,0,Wc,Hc);
+   const gdat=gidata.data;
+   for(let i=0;i<gdat.length;i+=4){
+     if(gdat[i+3]<3)continue;
+     const lum=gdat[i]/255;
+     gdat[i]=darkStop.r+(lightStop.r-darkStop.r)*lum;
+     gdat[i+1]=darkStop.g+(lightStop.g-darkStop.g)*lum;
+     gdat[i+2]=darkStop.b+(lightStop.b-darkStop.b)*lum;
+   }
+   gctx.putImageData(gidata,0,0);
+
+   const blurPx=1+strength*9;
+   d.filter=`blur(${blurPx}px)`;
+   d.drawImage(gray,0,0);
+   d.filter='none';
+   swap();
+ }
+
+ // AFFISCH — from a bold screen-printed poster/typography reference: the
+ // source is flattened to one hard-edged silhouette (no antialiasing, no
+ // tone — screen printing can't reproduce a smooth gradient, only "ink" or
+ // "no ink"), a thick outline is built by stamping that silhouette around a
+ // ring of offsets then punching the original shape back out of the middle
+ // ('destination-out'), and the interior is filled with a coarse, high-
+ // contrast, single-accent-colour dot grid (fewer/bigger steps than
+ // RASTER's continuous tone-driven halftone — this is meant to read as a
+ // bold graphic pattern, not a tonal reproduction). strength scales the
+ // outline thickness and the dot pitch.
+ //
+ // K/P KOLLEKTIV: the "ink" test can't be alpha alone the way RASTER's
+ // transparent-gap fix above is — that fix skips pixels with NO opacity,
+ // which is exactly right for a single category (stickers/text/etc. sit on
+ // a transparent canvas), but HELA POSTERN's composited canvas is opaque
+ // everywhere (the background fills every pixel), so an alpha-only test
+ // read the ENTIRE poster as "ink" and buried every sticker/text under one
+ // solid dot-filled rectangle. Ink is decided by LUMINANCE instead (dark
+ // content becomes ink, light content becomes bare "paper"), AND alpha (a
+ // fully transparent pixel in a single-category pass is never ink either
+ // way) — correct for both a fully opaque HELA POSTERN canvas and a mostly
+ // transparent single-category one.
+ if(c.affisch>0){
+   const d=clearDst(),strength=c.affisch/100;
+   const gray=document.createElement('canvas');gray.width=Wc;gray.height=Hc;
+   const gctx=gray.getContext('2d');
+   gctx.drawImage(src,0,0);
+   const idata=gctx.getImageData(0,0,Wc,Hc);
+   const dat=idata.data;
+   const ink=hexToRgbPaint('#161018');
+   for(let i=0;i<dat.length;i+=4){
+     const lum=(0.299*dat[i]+0.587*dat[i+1]+0.114*dat[i+2])/255;
+     if(dat[i+3]>60&&lum<0.5){dat[i]=ink.r;dat[i+1]=ink.g;dat[i+2]=ink.b;dat[i+3]=255;}
+     else dat[i+3]=0;
+   }
+   gctx.putImageData(idata,0,0);
+
+   // paper base underneath everything, alpha-clipped to the source's own
+   // silhouette so a single-category pass doesn't paint a paper rectangle
+   // across the empty page around one element.
+   d.fillStyle='#f5f1e4';
+   d.fillRect(0,0,Wc,Hc);
+   d.globalCompositeOperation='destination-in';
+   d.drawImage(src,0,0);
+   d.globalCompositeOperation='source-over';
+
+   const outlineW=Math.max(2,Math.round(3+strength*10));
+   const ring=document.createElement('canvas');ring.width=Wc;ring.height=Hc;
+   const rctx=ring.getContext('2d');
+   const ringSteps=10;
+   for(let i=0;i<ringSteps;i++){
+     const a=(i/ringSteps)*Math.PI*2;
+     rctx.drawImage(gray,Math.cos(a)*outlineW,Math.sin(a)*outlineW);
+   }
+   rctx.globalCompositeOperation='destination-out';
+   rctx.drawImage(gray,0,0);
+   rctx.globalCompositeOperation='source-over';
+
+   const accentSrc=hexToRgbPaint((state.bg&&(state.bg.c2||state.bg.c1))||'#2be37a');
+   const accent=mixWhitePaint(accentSrc,.12);
+   const cell=Math.round(10+strength*14);
+   const gw=Math.max(1,Math.ceil(Wc/cell)),gh=Math.max(1,Math.ceil(Hc/cell));
+   const tiny=document.createElement('canvas');tiny.width=gw;tiny.height=gh;
+   const ttx=tiny.getContext('2d',{willReadFrequently:true});
+   ttx.drawImage(gray,0,0,gw,gh);
+   const tpx=ttx.getImageData(0,0,gw,gh).data;
+   d.drawImage(gray,0,0);
+   d.fillStyle=rgbStrPaint(accent);
+   for(let gy=0;gy<gh;gy++){
+     for(let gx=0;gx<gw;gx++){
+       const i=(gy*gw+gx)*4;
+       if(tpx[i+3]<80)continue;
+       d.beginPath();
+       d.arc(gx*cell+cell/2,gy*cell+cell/2,cell*0.36,0,Math.PI*2);
+       d.fill();
+     }
+   }
+   d.drawImage(ring,0,0);
+   swap();
+ }
+
  const out=document.createElement('canvas');out.width=W;out.height=H;
  out.getContext('2d').drawImage(src,edge,edge,W,H,0,0,W,H);
  if(!needsRescale)return out;
@@ -4079,7 +4245,7 @@ document.querySelectorAll('#modes button').forEach(b=>b.onclick=()=>{showGuidedF
 
 function neutralValue(key,obj,min,max){
  if(key==='h'||key==='w'||key==='sx'||key==='sy')return 1;
- if(['skew','rot','shadow','organic','swell','twist','sticky','jagged','glitch','warp','melt','echo','ripple','pixel','dubbel','blod','vav','split','virvel','spegel','tintAmount','distortX','distortY','angle'].includes(key))return 0;
+ if(['skew','rot','shadow','organic','swell','twist','sticky','jagged','warp','melt','echo','ripple','pixel','dubbel','blod','vav','virvel','raster','blyerts','akvarell','riso','duoton','affisch','tintAmount','distortX','distortY','angle'].includes(key))return 0;
  if(key==='opacity')return 100;
  if(key==='x')return W/2;
  if(key==='y')return H/2;
@@ -4176,7 +4342,7 @@ ${slider('TAGGIG',state.paint,'jagged',0,100)}
   s=`<h2>LAGER</h2>${chaosTargetControls()}<div class="hint">Varje lager — HELA POSTERN, BAKGRUND, STICKER, TEXT, FOTO, TECKNING — har sitt eget kaos, och alla gäller samtidigt. Du redigerar just nu: <b>${editingLabel}</b>. ${editingHint} (● = det lagret har redan kaos på sig.)</div>
   <button id="chaosRemix" style="width:100%;margin-top:4px">REMIX DETTA LAGER</button>
   <div class="hint">Slumpar ett nytt, oväntat kaos för <b>${editingLabel}</b> — testa gärna flera gånger tills något känns rätt.</div>
-  <h2>KAOS · ORGANISKT</h2>${slider('WARP',layerVals,'warp')}${slider('MELT',layerVals,'melt')}${slider('BLÄCKBLÖDNING',layerVals,'blod')}<h2>KAOS · STRUKTUR</h2>${slider('GLITCH',layerVals,'glitch')}${slider('PIXEL',layerVals,'pixel')}${slider('DUBBELEXPONERING',layerVals,'dubbel')}${slider('VÄV',layerVals,'vav')}<h2>KAOS · SÄRSKILT</h2>${slider('FÄRGSPLIT',layerVals,'split')}${slider('VIRVEL',layerVals,'virvel')}${slider('SPEGEL',layerVals,'spegel')}<h2>KAOS · VIBE</h2>${slider('RASTERISERA',layerVals,'raster')}${slider('BLYERTS',layerVals,'blyerts')}${slider('AKVARELL',layerVals,'akvarell')}<div class="hint">VIBE-effekterna byter ut hela posterns känsla (tidningstryck, pennskiss, akvarell) istället för att bara flytta runt eller upprepa det som redan finns där. Effekten ligger kvar även när du byter arbetsläge. Vill du inte ha något kaos alls, lämna bara allt på 0${guidedCurrentRole()==='chaos'?' — eller hoppa över nedan':''}.</div><div class="grid" style="margin-top:10px">
+  <h2>KAOS · ORGANISKT</h2>${slider('WARP',layerVals,'warp')}${slider('MELT',layerVals,'melt')}${slider('BLÄCKBLÖDNING',layerVals,'blod')}<h2>KAOS · STRUKTUR</h2>${slider('PIXEL',layerVals,'pixel')}${slider('DUBBELEXPONERING',layerVals,'dubbel')}${slider('VÄV',layerVals,'vav')}<h2>KAOS · SÄRSKILT</h2>${slider('VIRVEL',layerVals,'virvel')}<h2>KAOS · VIBE</h2>${slider('RASTERISERA',layerVals,'raster')}${slider('BLYERTS',layerVals,'blyerts')}${slider('AKVARELL',layerVals,'akvarell')}${slider('RISO',layerVals,'riso')}${slider('DUOTON',layerVals,'duoton')}${slider('AFFISCH',layerVals,'affisch')}<div class="hint">VIBE-effekterna byter ut hela posterns känsla (tidningstryck, pennskiss, akvarell, risotryck, duoton-foto, screentryckt affisch) istället för att bara flytta runt eller upprepa det som redan finns där. Effekten ligger kvar även när du byter arbetsläge. Vill du inte ha något kaos alls, lämna bara allt på 0${guidedCurrentRole()==='chaos'?' — eller hoppa över nedan':''}.</div><div class="grid" style="margin-top:10px">
 <button id="chaosNormal">NOLLSTÄLL DETTA LAGER</button>
 <button id="chaosMax">DETTA LAGER · 100</button>
 </div>${skipBtn}`;
