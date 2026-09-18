@@ -3238,26 +3238,36 @@ function drawText(t){
    drawGlyphs(ctx,text,size,font,color,true,0,seed,-w/2,size*0.36);
    halfW=w/2;
  }else{
-   // K/P KOLLEKTIV: on user feedback that letters should merge into shapes
-   // even MORE right at max INFLATE — the three knobs that control how much
-   // neighbouring glyphs melt together (how much they overlap before the
-   // blur, how strong the blur itself is, and how eagerly the threshold
-   // pulls faint in-between fringes back to solid) all used to scale
-   // strictly linearly with the slider. That kept the low/mid range exactly
-   // as tuned (still narrow, per the note above — mush comes fast), while
-   // letting the TOP of the range push further than 1:1 would: infT ramps
-   // in as inflate approaches its own max (quadratically, so it barely
-   // touches the low/mid range and only really kicks in over the last
-   // ~30%), giving more overlap, more blur and a lower solidify-threshold
-   // exactly where the user asked for it, without changing how INFLATE
-   // feels anywhere else on the slider.
+   // K/P KOLLEKTIV: round 1 on user feedback ("letters should merge into
+   // shapes even more at max") tried pushing overlap, blur AND the
+   // solidify-threshold all together right near the top of the slider.
+   // Round 2 feedback: that read as mushier, not better ("nästan bättre
+   // innan"), and what was actually wanted is specifically that the letters
+   // themselves get FYLLIGARE (plumper/chubbier) the higher you drag the
+   // slider — progressively across the whole range, not just a push at the
+   // very top. Letter SPACING/overlap is reverted to exactly the original
+   // (that's what was making it feel like mush, not fullness) and blur is
+   // back to a straight 1:1 with inflate. The one knob that actually grows
+   // each letterform's own silhouette is the solidify threshold: blur
+   // diffuses each glyph's ink outward into a soft falloff, and a LOWER
+   // threshold counts further out into that falloff as solid ink — i.e. it
+   // dilates the letters, making them look plumper, without needing more
+   // overlap or more blur to do it. That threshold now eases down smoothly
+   // across the entire inflate range (not just near max), so fullness
+   // builds continuously as you drag, exactly ju högre desto fylligare.
    const inflateMax=Math.max(8,size*.16);
-   const infT=Math.min(1,inflate/inflateMax);const infT2=infT*infT;
-   const spacing=textLetterSpacing(inflate)*(1+infT2*0.6);
-   const blurAmt=inflate*(1+infT2*0.4);
+   const infT=Math.min(1,inflate/inflateMax);
+   const spacing=textLetterSpacing(inflate);
+   const blurAmt=inflate;
    const mctx=document.createElement('canvas').getContext('2d');
    const w=measureGlyphs(mctx,text,size,font,letterJitter,spacing,seed,true);
-   const pad=Math.max(blurAmt*2.5,size*0.35);
+   // More headroom than blurAmt*2.5 alone: the solidify threshold below now
+   // goes as low as 0.20×maxAlpha (was a flat 0.42×), so ink can extend
+   // meaningfully further out into the blur's soft falloff before it drops
+   // below threshold — the offscreen canvas has to be sized for THAT lowest
+   // threshold, not the old higher one, or the edge gets hard-clipped by the
+   // canvas boundary itself right where the plumping is most visible.
+   const pad=Math.max(blurAmt*5,size*0.55);
    const offW=Math.max(2,Math.ceil(w+pad*2)),offH=Math.max(2,Math.ceil(size*1.7+pad*2));
    const off=document.createElement('canvas');off.width=offW;off.height=offH;
    const octx=off.getContext('2d');
@@ -3279,10 +3289,11 @@ function drawText(t){
    // Adaptive threshold as a safety net on top of the bold fix — self-
    // calibrates to whatever peak alpha this particular font/size/blur
    // combination actually produced, instead of assuming it reaches 255.
-   // Eased down a bit more as infT climbs so the melted fringes between
-   // close letters solidify into one shape instead of staying two blobs
-   // with a faint gap.
-   const threshold=Math.max(26,maxAlpha*(0.42-infT2*0.14));
+   // Eases DOWN continuously as inflate climbs (0.46 at inflate=0 down to
+   // 0.20 at max) -- the lower it goes, the further into each glyph's blur
+   // falloff still counts as solid ink, so letters visibly get plumper the
+   // whole way up the slider, not just right at the end.
+   const threshold=Math.max(18,maxAlpha*(0.46-infT*0.26));
    const hexN=n=>isNaN(n)?17:n;
    const cr=hexN(parseInt(color.slice(1,3),16)),cg=hexN(parseInt(color.slice(3,5)||color.slice(1,2)+color.slice(1,2),16)),cb=hexN(parseInt(color.slice(5,7)||color.slice(1,2)+color.slice(1,2),16));
    for(let p=0;p<d.length;p+=4){
@@ -3374,6 +3385,15 @@ function drawSticker(s){
      ctx.strokeStyle=ctx.fillStyle;
      ctx.lineWidth=Math.max(2,s.size*.045);
      ctx.lineJoin='round';ctx.lineCap='round';
+     // K/P KOLLEKTIV: on user feedback — the star sticker's outline was
+     // missing the line across one point. fill() always treats an open path
+     // as implicitly closed (straight back to its start) when painting it,
+     // but stroke() does NOT add that closing segment unless the path was
+     // actually closed with closePath() -- the star's path (and any other
+     // shape that, like it, relies on fill()'s auto-close instead of calling
+     // closePath() itself) was drawing its outline one segment short. Always
+     // closing here before stroking matches what fill() already implied.
+     ctx.closePath();
      ctx.stroke(...args);
      ctx.restore();
    };
