@@ -195,7 +195,8 @@ main.stage{
   overflow:hidden;
 }
 #canvas{
-  display:block;height:min(96vh,1080px);width:auto;max-width:100%;
+  display:block;width:auto;height:auto;
+  max-height:min(96vh,1080px);max-width:100%;
   background:#fff;cursor:crosshair;touch-action:none;
   border:0;box-shadow:none;
   transform-origin:center center;
@@ -230,7 +231,7 @@ body.poster-only #viewZoomControls{display:none}
 body.poster-only .app{grid-template-columns:0 1fr 0}
 body.poster-only nav.rail,body.poster-only aside.panel,body.poster-only header.topbar{display:none}
 body.poster-only main.stage{padding:0}
-body.poster-only #canvas{height:min(100vh,1200px);max-width:100vw}
+body.poster-only #canvas{width:auto;height:auto;max-height:min(100vh,1200px);max-width:100vw}
 body.poster-only #posterView{position:fixed;right:14px;top:14px}
 
 /* ---------- panel: current-role tool controls (guided hint, sliders, etc) ---------- */
@@ -589,8 +590,18 @@ function primeAudio(){try{audioCtx=audioCtx||new(window.AudioContext||window.web
 // suspend audio while a tab is backgrounded/the screen is locked.
 ['pointerdown','keydown'].forEach(evt=>document.addEventListener(evt,primeAudio,{passive:true}));
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')primeAudio()});
-function voteSound(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.frequency.setValueAtTime(620,n);o.frequency.setValueAtTime(820,n+.11);g.gain.setValueAtTime(.08,n);g.gain.exponentialRampToValueAtTime(.001,n+.24);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.25)}catch(e){}}
-function chatSound(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.type='sine';o.frequency.setValueAtTime(720,n);g.gain.setValueAtTime(.025,n);g.gain.exponentialRampToValueAtTime(.001,n+.055);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.06)}catch(e){}}
+// K/P KOLLEKTIV: on user feedback that sound "seems to be gone again" — a
+// full audit found the actual triggering/unlock logic already solid (every
+// call primes/resumes the shared audioCtx, plus the page-wide pointerdown/
+// keydown/visibilitychange priming below already covers the #1 real-world
+// autoplay-policy cause noted above). What WAS genuinely working against
+// audibility: several of these cues were very quiet and very short
+// (chatSound's old .025 gain / 55ms is easy to miss entirely under normal
+// speaker volume or a noisy room), so on a real device it's easy to
+// mistake "I didn't notice that" for "sound is broken". Nudged the
+// quietest ones louder/slightly longer; the wiring itself is unchanged.
+function voteSound(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.frequency.setValueAtTime(620,n);o.frequency.setValueAtTime(820,n+.11);g.gain.setValueAtTime(.11,n);g.gain.exponentialRampToValueAtTime(.001,n+.26);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.27)}catch(e){}}
+function chatSound(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.type='sine';o.frequency.setValueAtTime(720,n);g.gain.setValueAtTime(.045,n);g.gain.exponentialRampToValueAtTime(.001,n+.09);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.1)}catch(e){}}
 // V11: LJUD — a couple more small cues in the same one-liner-oscillator
 // style as voteSound/chatSound above. Kept deliberately few: a click for
 // the LJUD-toggle itself, an advance/finished pair for the solo guided
@@ -598,8 +609,8 @@ function chatSound(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)retur
 // Every one is gated by soundEnabled and wrapped in try/catch exactly like
 // the two above — never allowed to break the app if the Web Audio API is
 // unavailable or blocked.
-function soundClick(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.type='sine';o.frequency.setValueAtTime(340,n);g.gain.setValueAtTime(.05,n);g.gain.exponentialRampToValueAtTime(.001,n+.05);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.06)}catch(e){}}
-function soundAdvance(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;const n=audioCtx.currentTime;[440,660].forEach((f,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='sine';const t=n+i*.09;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(.07,t);g.gain.exponentialRampToValueAtTime(.001,t+.18);o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+.19)})}catch(e){}}
+function soundClick(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;let o=audioCtx.createOscillator(),g=audioCtx.createGain(),n=audioCtx.currentTime;o.type='sine';o.frequency.setValueAtTime(340,n);g.gain.setValueAtTime(.075,n);g.gain.exponentialRampToValueAtTime(.001,n+.07);o.connect(g);g.connect(audioCtx.destination);o.start(n);o.stop(n+.08)}catch(e){}}
+function soundAdvance(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;const n=audioCtx.currentTime;[440,660].forEach((f,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='sine';const t=n+i*.09;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(.09,t);g.gain.exponentialRampToValueAtTime(.001,t+.19);o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+.2)})}catch(e){}}
 function soundFinished(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;const n=audioCtx.currentTime;[523,659,784,1046].forEach((f,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='triangle';const t=n+i*.1;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(.09,t);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+.32)})}catch(e){}}
 function updateSystemBar(){
  const el=document.getElementById('systemBar');if(!el)return;
@@ -1721,8 +1732,32 @@ function qnoise(seed,x){ // chunkier, sharper coherent signal for HÅRD
 // normalize arc length back to the ~794px reference width right here, at
 // the one place .s is produced, so every downstream noise(seed, s/N) call
 // sees the resolution it was tuned for without needing its own fix.
+// K/P KOLLEKTIV: on user feedback that drawing with the mouse could feel
+// more "följsam/utjämnad" (responsive/smoothed) — sample() used to connect
+// the raw pointer points with dead-straight line segments before arc-length
+// resampling, so every little kink from mouse-sensor jitter (or just a fast
+// stroke producing widely-spaced points) survived as a visible hard corner
+// in the final geometry, no matter how finely it got resampled afterwards.
+// A single light [1,2,1] smoothing pass over the raw points — endpoints
+// left untouched, so a stroke still starts/ends exactly where you
+// clicked/released — rounds off that small-scale jitter before it ever
+// reaches the resampler, without changing the overall shape of the stroke.
+// Runs for every material (TECKNA's plain pen included), since a straighter,
+// less noisy base path only helps the organic/wobble effects layered on
+// top of it in geom() — they add their own controlled variation regardless.
+function smoothPointsPaint(points){
+ if(points.length<3)return points;
+ const out=[points[0]];
+ for(let i=1;i<points.length-1;i++){
+   const a=points[i-1],b=points[i],c=points[i+1];
+   out.push({x:(a.x+2*b.x+c.x)/4,y:(a.y+2*b.y+c.y)/4});
+ }
+ out.push(points[points.length-1]);
+ return out;
+}
 function sample(points,step=4){
  if(points.length<2)return points.map(p=>({...p,s:0}));
+ points=smoothPointsPaint(points);
  const paintRes=W/794;
  let out=[],dist=0;
  for(let i=1;i<points.length;i++){
@@ -3203,10 +3238,26 @@ function drawText(t){
    drawGlyphs(ctx,text,size,font,color,true,0,seed,-w/2,size*0.36);
    halfW=w/2;
  }else{
-   const spacing=textLetterSpacing(inflate);
+   // K/P KOLLEKTIV: on user feedback that letters should merge into shapes
+   // even MORE right at max INFLATE — the three knobs that control how much
+   // neighbouring glyphs melt together (how much they overlap before the
+   // blur, how strong the blur itself is, and how eagerly the threshold
+   // pulls faint in-between fringes back to solid) all used to scale
+   // strictly linearly with the slider. That kept the low/mid range exactly
+   // as tuned (still narrow, per the note above — mush comes fast), while
+   // letting the TOP of the range push further than 1:1 would: infT ramps
+   // in as inflate approaches its own max (quadratically, so it barely
+   // touches the low/mid range and only really kicks in over the last
+   // ~30%), giving more overlap, more blur and a lower solidify-threshold
+   // exactly where the user asked for it, without changing how INFLATE
+   // feels anywhere else on the slider.
+   const inflateMax=Math.max(8,size*.16);
+   const infT=Math.min(1,inflate/inflateMax);const infT2=infT*infT;
+   const spacing=textLetterSpacing(inflate)*(1+infT2*0.6);
+   const blurAmt=inflate*(1+infT2*0.4);
    const mctx=document.createElement('canvas').getContext('2d');
    const w=measureGlyphs(mctx,text,size,font,letterJitter,spacing,seed,true);
-   const pad=Math.max(inflate*2.5,size*0.35);
+   const pad=Math.max(blurAmt*2.5,size*0.35);
    const offW=Math.max(2,Math.ceil(w+pad*2)),offH=Math.max(2,Math.ceil(size*1.7+pad*2));
    const off=document.createElement('canvas');off.width=offW;off.height=offH;
    const octx=off.getContext('2d');
@@ -3220,7 +3271,7 @@ function drawText(t){
    drawGlyphs(octx,text,size,font,'#000',letterJitter,spacing,seed,pad,offH/2+size*0.36,true);
    const off2=document.createElement('canvas');off2.width=offW;off2.height=offH;
    const o2ctx=off2.getContext('2d');
-   o2ctx.filter=`blur(${inflate}px)`;
+   o2ctx.filter=`blur(${blurAmt}px)`;
    o2ctx.drawImage(off,0,0);
    const id=o2ctx.getImageData(0,0,offW,offH),d=id.data;
    let maxAlpha=0;
@@ -3228,7 +3279,10 @@ function drawText(t){
    // Adaptive threshold as a safety net on top of the bold fix — self-
    // calibrates to whatever peak alpha this particular font/size/blur
    // combination actually produced, instead of assuming it reaches 255.
-   const threshold=Math.max(40,maxAlpha*0.42);
+   // Eased down a bit more as infT climbs so the melted fringes between
+   // close letters solidify into one shape instead of staying two blobs
+   // with a faint gap.
+   const threshold=Math.max(26,maxAlpha*(0.42-infT2*0.14));
    const hexN=n=>isNaN(n)?17:n;
    const cr=hexN(parseInt(color.slice(1,3),16)),cg=hexN(parseInt(color.slice(3,5)||color.slice(1,2)+color.slice(1,2),16)),cb=hexN(parseInt(color.slice(5,7)||color.slice(1,2)+color.slice(1,2),16));
    for(let p=0;p<d.length;p+=4){
@@ -3302,6 +3356,38 @@ function drawSticker(s){
  // needing per-shape width/height math.
  ctx.scale(s.sx||1,s.sy||1);
  const seed=s.seed||1;
+ // K/P KOLLEKTIV: on user feedback — an "outline only" option for stickers.
+ // Every solid-shape kind below already builds its path and calls
+ // ctx.fill() once (or, for a couple of compound shapes, a few times on
+ // sub-paths) — rather than rewriting each of the ~15 kinds to branch on
+ // fill vs. stroke, temporarily swap what ctx.fill() DOES for the duration
+ // of this one sticker: draw the exact same path as a stroke instead,
+ // picking up whatever colour the branch already set as fillStyle. Kinds
+ // that are already line-based (spiral/line) call ctx.stroke() directly and
+ // are unaffected; 'drawing' (an imported raster) has no vector path to
+ // outline and is likewise unaffected -- both reasonable no-ops.
+ let restoreFill=null;
+ if(s.outline){
+   restoreFill=()=>{delete ctx.fill;delete ctx.fillRect};
+   ctx.fill=function(...args){
+     ctx.save();
+     ctx.strokeStyle=ctx.fillStyle;
+     ctx.lineWidth=Math.max(2,s.size*.045);
+     ctx.lineJoin='round';ctx.lineCap='round';
+     ctx.stroke(...args);
+     ctx.restore();
+   };
+   // 'square'/'cross' draw with fillRect() instead of a fill()'d path —
+   // same swap, via strokeRect(), so those two kinds outline correctly too.
+   ctx.fillRect=function(x,y,w,h){
+     ctx.save();
+     ctx.strokeStyle=ctx.fillStyle;
+     ctx.lineWidth=Math.max(2,s.size*.045);
+     ctx.lineJoin='round';
+     ctx.strokeRect(x,y,w,h);
+     ctx.restore();
+   };
+ }
  if(s.kind==='spiral'){ctx.strokeStyle=s.color;ctx.lineWidth=Math.max(2,s.size*.08);ctx.beginPath();for(let i=0;i<90;i++){let a=i*.24,r=s.size*(i/90);let x=Math.cos(a)*r,y=Math.sin(a)*r;i?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke()}
  else if(s.kind==='heart'){ctx.fillStyle=s.color;ctx.beginPath();ctx.moveTo(0,s.size*.35);ctx.bezierCurveTo(-s.size*.8,-s.size*.15,-s.size*.45,-s.size*.65,0,-s.size*.3);ctx.bezierCurveTo(s.size*.45,-s.size*.65,s.size*.8,-s.size*.15,0,s.size*.35);ctx.fill()}
  else if(s.kind==='star'){ctx.fillStyle=s.color;ctx.beginPath();for(let i=0;i<10;i++){let a=-Math.PI/2+i*Math.PI/5,r=i%2?s.size*.42:s.size;ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r)}ctx.fill()}
@@ -3372,6 +3458,7 @@ function drawSticker(s){
    ctx.beginPath();ctx.arc(0,0,r*.26,0,Math.PI*2);ctx.fill();
  }
  else if(s.kind==='drawing'){let im=new Image();im.src=s.src;ctx.drawImage(im,-s.size/2,-s.size/2,s.size,s.size)}
+ if(restoreFill)restoreFill();
  ctx.restore();
 }
 // V7: RIVEN KANT (torn edge) — builds one continuous ragged outline around
@@ -4402,7 +4489,7 @@ ${slider('TAGGIG',state.paint,'jagged',0,100)}
  el.innerHTML=s;
  wireControls();
 }
-function stickerControls(){let o=state.stickers[selectedSticker];if(!o)return '<div class="hint">Lägg till ett stickerobjekt för att redigera det.</div>';return `<h2>VALT STICKEROBJEKT</h2>${slider('X',o,'x',0,W)}${slider('Y',o,'y',0,H)}${slider('STORLEK',o,'size',5,400)}${slider('BREDD',o,'sx',.2,3,.01)}${slider('HÖJD',o,'sy',.2,3,.01)}${slider('ROTATION',o,'rot',-180,180)}${slider('OPACITET',o,'opacity')}${colorRow('FÄRG',o,'color')}<button id="delSticker" class="danger">TA BORT</button>`}
+function stickerControls(){let o=state.stickers[selectedSticker];if(!o)return '<div class="hint">Lägg till ett stickerobjekt för att redigera det.</div>';return `<h2>VALT STICKEROBJEKT</h2>${slider('X',o,'x',0,W)}${slider('Y',o,'y',0,H)}${slider('STORLEK',o,'size',5,400)}${slider('BREDD',o,'sx',.2,3,.01)}${slider('HÖJD',o,'sy',.2,3,.01)}${slider('ROTATION',o,'rot',-180,180)}${slider('OPACITET',o,'opacity')}${colorRow('FÄRG',o,'color')}<button id="stickerOutlineToggle" class="${o.outline?'active':''}">KONTUR: ${o.outline?'PÅ':'AV'}</button><div class="hint">Bara linjerna runt formen, ingen fyllning.</div><button id="delSticker" class="danger">TA BORT</button>`}
 function chaosTargetControls(){
  const editing=state.chaos.editing;
  const isActive=cat=>CHAOS_KEYS.some(k=>(state.chaos.layers[cat]?.[k]||0)>0);
@@ -4615,6 +4702,10 @@ if(q('fontFamily')){
  if(q('letterJitterToggle'))q('letterJitterToggle').onclick=()=>{
   const o=state.texts[selectedText>=0?selectedText:0];if(!o)return;
   o.letterJitter=!o.letterJitter;saveLocal();buildControls();render();
+ };
+ if(q('stickerOutlineToggle'))q('stickerOutlineToggle').onclick=()=>{
+  const o=state.stickers[selectedSticker];if(!o)return;
+  o.outline=!o.outline;saveLocal();buildControls();render();
  };
  if(q('textValue'))q('textValue').oninput=()=>{
    const o=state.texts[selectedText];
@@ -5180,7 +5271,7 @@ document.getElementById('export').onclick=()=>{
  setMode(mode);
 
  try{
-   const dataUrl=exportAtScale(EXPORT_SCALE,'image/png');
+   const dataUrl=setPngDpi(exportAtScale(EXPORT_SCALE,'image/png'),96*EXPORT_SCALE);
    const a=document.createElement('a');
    a.href=dataUrl;
    const stamp=new Date().toISOString().slice(0,10);
@@ -5299,6 +5390,65 @@ function exportAtScale(scale,mime,quality){
   render();
  }
  return dataUrl;
+}
+
+// K/P KOLLEKTIV: on user feedback ("exporterna blir större än A3/A4") — the
+// PNG from canvas.toDataURL() carries the right PIXEL count for a crisp A4/
+// A3 print (EXPORT_SCALE× the base 96-CSS-px/inch canvas = 288 DPI), but a
+// PNG has no resolution info unless something writes it in, and Chrome's
+// canvas export writes none at all. Every viewer/printer that doesn't know
+// the intended DPI falls back to treating it as a 72 or 96 DPI image
+// instead — which prints the SAME pixels at a much bigger physical size
+// than A4/A3 (a 2382×3369px PNG at 96 DPI is ~25×35cm, not A4's ~21×30cm).
+// The fix isn't fewer pixels (that would lose quality) — it's telling the
+// file what those pixels are worth, by hand-inserting a standard PNG pHYs
+// chunk (physical pixel dimensions) right after IHDR. Software that reads
+// it (Photoshop, Affinity, GIMP, macOS Preview, most print pipelines)
+// then places/prints it at the correct A4/A3 size automatically.
+function crc32Paint_(bytes){
+ if(!crc32Paint_.table){
+   const table=new Uint32Array(256);
+   for(let n=0;n<256;n++){
+     let c=n;
+     for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);
+     table[n]=c>>>0;
+   }
+   crc32Paint_.table=table;
+ }
+ const table=crc32Paint_.table;
+ let c=0xFFFFFFFF;
+ for(let i=0;i<bytes.length;i++)c=table[(c^bytes[i])&0xFF]^(c>>>8);
+ return(c^0xFFFFFFFF)>>>0;
+}
+function setPngDpi(dataUrl,dpi){
+ try{
+   const base64=dataUrl.split(',')[1];
+   const bin=atob(base64);
+   const bytes=new Uint8Array(bin.length);
+   for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+   // PNG signature (8 bytes) is always immediately followed by IHDR, which
+   // is always exactly 13 bytes of data -- so this offset is safe for any
+   // canvas-produced PNG without having to walk the chunk chain.
+   const ihdrEnd=8+4+4+13+4;
+   const pxPerMeter=Math.round(dpi/0.0254);
+   const typeBytes=[0x70,0x48,0x59,0x73]; // 'pHYs'
+   const chunk=new Uint8Array(4+4+9+4);
+   const cdv=new DataView(chunk.buffer);
+   cdv.setUint32(0,9,false);
+   chunk.set(typeBytes,4);
+   cdv.setUint32(8,pxPerMeter,false);
+   cdv.setUint32(12,pxPerMeter,false);
+   chunk[16]=1; // unit specifier: 1 = metre
+   const crc=crc32Paint_(chunk.subarray(4,17));
+   cdv.setUint32(17,crc,false);
+   const out=new Uint8Array(bytes.length+chunk.length);
+   out.set(bytes.subarray(0,ihdrEnd),0);
+   out.set(chunk,ihdrEnd);
+   out.set(bytes.subarray(ihdrEnd),ihdrEnd+chunk.length);
+   let outBin='';
+   for(let i=0;i<out.length;i++)outBin+=String.fromCharCode(out[i]);
+   return 'data:image/png;base64,'+btoa(outBin);
+ }catch(e){return dataUrl}
 }
 
 // V7: voice-to-text for COPYWRITER, via the browser's built-in Web Speech
