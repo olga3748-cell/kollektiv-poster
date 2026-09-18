@@ -534,6 +534,28 @@ const C=document.getElementById('canvas');
 // for isolated rendering. Always restored immediately after.
 let ctx=C.getContext('2d');
 let W=C.width,H=C.height;
+// K/P KOLLEKTIV: Safari/WebKit bug workaround — user diagnosed that CHAOS
+// "VIBE" filters (INFLATE, BLYERTS, AKVARELL, RISO, DUOTON) worked in Opera
+// but not Safari ("det funkar i opera webbläsaren men inte i safari").
+// Root cause: WebKit silently fails, or applies a much weaker effect, when
+// ctx.filter (blur/grayscale/invert/saturate/brightness/contrast/...) is
+// used on a <canvas> created via document.createElement('canvas') that was
+// never inserted into the DOM. Chromium-based browsers (Chrome/Edge/Opera)
+// apply filters correctly on such "detached" canvases; Safari does not.
+// Every offscreen/scratch canvas that later sets ctx.filter must be created
+// with mkFilterCanvas() instead of a bare document.createElement('canvas')
+// so it lives inside this hidden (but attached) host and Safari's filter
+// pipeline applies it correctly. The host is cleared once per render() pass
+// (see render()) so nodes never accumulate across frames.
+const _filterHost=document.createElement('div');
+_filterHost.style.cssText='position:fixed;left:-99999px;top:-99999px;width:1px;height:1px;overflow:hidden;pointer-events:none;';
+document.body.appendChild(_filterHost);
+function mkFilterCanvas(w,h){
+ const c=document.createElement('canvas');
+ c.width=w;c.height=h;
+ _filterHost.appendChild(c);
+ return c;
+}
 const socket=io();
 let roomCode=null,mySocketId=null,applyingRemote=false,syncTimer=null,lastSentJSON='',participants=[];
 let assignedRole=null,currentVote=null,currentFormatVote=null,currentFinishVote=null,audioCtx=null,cameraStream=null,drawTool='pen',erasing=false,pendingAssignedRole=null;
@@ -3008,6 +3030,11 @@ function render(){
  ctx.globalAlpha=1;
  ctx.globalCompositeOperation='source-over';
  ctx.clearRect(0,0,W,H);
+ // Safari filter-host cleanup: render() runs fully synchronously (no
+ // chaosTransform()/drawText() call outside it), so it's safe to sweep out
+ // every mkFilterCanvas() node from the previous pass right here rather
+ // than removing them individually as each effect finishes.
+ _filterHost.textContent='';
 
  // V8: every category (HELA POSTERN/BAKGRUND/STICKER/TEXT/FOTO/TECKNING) now
  // carries its own independent chaos config and every one with any nonzero
@@ -3290,7 +3317,7 @@ function drawText(t){
    // (inflate=0) render path, so thin fonts still look like themselves
    // until INFLATE is actually turned up.
    drawGlyphs(octx,text,size,font,'#000',letterJitter,spacing,seed,pad,offH/2+size*0.36,true);
-   const off2=document.createElement('canvas');off2.width=offW;off2.height=offH;
+   const off2=mkFilterCanvas(offW,offH);
    const o2ctx=off2.getContext('2d');
    o2ctx.filter=`blur(${blurAmt}px)`;
    o2ctx.drawImage(off,0,0);
@@ -3679,8 +3706,10 @@ function chaosTransform(sourceCanvas,vals){
  // part of the output.
  const edge=160;
  const Wc=W+edge*2,Hc=H+edge*2;
- const A=document.createElement('canvas'),B=document.createElement('canvas');
- A.width=B.width=Wc;A.height=B.height=Hc;
+ // K/P KOLLEKTIV: mkFilterCanvas (not a bare createElement) — DUOTON's final
+ // step (and clearDst()'s d.filter='none' reset) sets .filter directly on
+ // whichever of these two is currently `dst`, so both need to be Safari-safe.
+ const A=mkFilterCanvas(Wc,Hc),B=mkFilterCanvas(Wc,Hc);
  const a=A.getContext('2d'),b=B.getContext('2d');
  // fill the margin with a stretched sample of the boundary (edges, then
  // corners) — purely so displaced content has something to reveal; never
@@ -3953,11 +3982,11 @@ function chaosTransform(sourceCanvas,vals){
    // max keeps the same soft-sketch quality on filled shapes/text while
    // leaving thin strokes actually visible.
    const blurPx=Math.round(2+strength*8);
-   const gray=document.createElement('canvas');gray.width=Wc;gray.height=Hc;
+   const gray=mkFilterCanvas(Wc,Hc);
    const gctx=gray.getContext('2d');
    gctx.filter='grayscale(1) contrast(1.05)';
    gctx.drawImage(src,0,0);
-   const inv=document.createElement('canvas');inv.width=Wc;inv.height=Hc;
+   const inv=mkFilterCanvas(Wc,Hc);
    const ictx=inv.getContext('2d');
    ictx.filter=`invert(1) blur(${blurPx}px)`;
    ictx.drawImage(gray,0,0);
@@ -4098,7 +4127,7 @@ function chaosTransform(sourceCanvas,vals){
  if(c.akvarell>0){
    const d=clearDst(),strength=c.akvarell/100;
    const blurPx=2+strength*7;
-   const wash=document.createElement('canvas');wash.width=Wc;wash.height=Hc;
+   const wash=mkFilterCanvas(Wc,Hc);
    const wctx=wash.getContext('2d');
    wctx.filter=`blur(${blurPx}px) saturate(${1+strength*.5})`;
    wctx.drawImage(src,0,0);
@@ -4108,7 +4137,7 @@ function chaosTransform(sourceCanvas,vals){
 
    const poolRnd=mulberry32Paint(6161);
    const drawPool=(blurMul,alphaMul,dx,dy)=>{
-     const pool=document.createElement('canvas');pool.width=Wc;pool.height=Hc;
+     const pool=mkFilterCanvas(Wc,Hc);
      const pctx=pool.getContext('2d');
      pctx.filter=`blur(${blurPx*blurMul}px) brightness(0.8)`;
      pctx.drawImage(src,0,0);
@@ -4160,7 +4189,7 @@ function chaosTransform(sourceCanvas,vals){
    d.drawImage(post,0,0);
 
    const off=2+strength*6;
-   const keyplate=document.createElement('canvas');keyplate.width=Wc;keyplate.height=Hc;
+   const keyplate=mkFilterCanvas(Wc,Hc);
    const kctx=keyplate.getContext('2d');
    kctx.filter='grayscale(1) brightness(0.5) contrast(1.3)';
    kctx.drawImage(src,0,0);
@@ -4170,7 +4199,7 @@ function chaosTransform(sourceCanvas,vals){
    d.globalCompositeOperation='source-over';
    d.globalAlpha=1;
 
-   const glowplate=document.createElement('canvas');glowplate.width=Wc;glowplate.height=Hc;
+   const glowplate=mkFilterCanvas(Wc,Hc);
    const gpctx=glowplate.getContext('2d');
    gpctx.filter='saturate(1.7) brightness(1.15)';
    gpctx.drawImage(src,0,0);
@@ -4232,7 +4261,7 @@ function chaosTransform(sourceCanvas,vals){
    const darkStop=towards(avg,.85,rawDark);
    const lightStop=towards(avg,.85,rawLight);
 
-   const gray=document.createElement('canvas');gray.width=Wc;gray.height=Hc;
+   const gray=mkFilterCanvas(Wc,Hc);
    const gctx=gray.getContext('2d');
    gctx.filter='grayscale(1) contrast(1.1)';
    gctx.drawImage(src,0,0);
