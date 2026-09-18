@@ -3255,7 +3255,14 @@ function drawText(t){
    // overlap or more blur to do it. That threshold now eases down smoothly
    // across the entire inflate range (not just near max), so fullness
    // builds continuously as you drag, exactly ju högre desto fylligare.
-   const inflateMax=Math.max(8,size*.16);
+   // K/P KOLLEKTIV: on user feedback — wants to be able to slide INFLATE up
+   // even further than this. Doubled the slider's own ceiling (also updated
+   // in textControls() below, which builds the actual <input max>) so
+   // there's real headroom past what used to be the top; the threshold ramp
+   // just below is widened to match, so the extra range keeps building
+   // fullness all the way to the new max instead of plateauing at the old
+   // one partway up the slider.
+   const inflateMax=Math.max(8,size*.32);
    const infT=Math.min(1,inflate/inflateMax);
    const spacing=textLetterSpacing(inflate);
    const blurAmt=inflate;
@@ -3267,7 +3274,7 @@ function drawText(t){
    // below threshold — the offscreen canvas has to be sized for THAT lowest
    // threshold, not the old higher one, or the edge gets hard-clipped by the
    // canvas boundary itself right where the plumping is most visible.
-   const pad=Math.max(blurAmt*5,size*0.55);
+   const pad=Math.max(blurAmt*6,size*0.7);
    const offW=Math.max(2,Math.ceil(w+pad*2)),offH=Math.max(2,Math.ceil(size*1.7+pad*2));
    const off=document.createElement('canvas');off.width=offW;off.height=offH;
    const octx=off.getContext('2d');
@@ -3290,10 +3297,12 @@ function drawText(t){
    // calibrates to whatever peak alpha this particular font/size/blur
    // combination actually produced, instead of assuming it reaches 255.
    // Eases DOWN continuously as inflate climbs (0.46 at inflate=0 down to
-   // 0.20 at max) -- the lower it goes, the further into each glyph's blur
-   // falloff still counts as solid ink, so letters visibly get plumper the
-   // whole way up the slider, not just right at the end.
-   const threshold=Math.max(18,maxAlpha*(0.46-infT*0.26));
+   // 0.12 at the new, higher max) -- the lower it goes, the further into
+   // each glyph's blur falloff still counts as solid ink, so letters
+   // visibly get plumper the whole way up the slider, not just near the
+   // end, and now keep gaining fullness over the whole doubled range
+   // instead of maxing out halfway up it.
+   const threshold=Math.max(12,maxAlpha*(0.46-infT*0.34));
    const hexN=n=>isNaN(n)?17:n;
    const cr=hexN(parseInt(color.slice(1,3),16)),cg=hexN(parseInt(color.slice(3,5)||color.slice(1,2)+color.slice(1,2),16)),cb=hexN(parseInt(color.slice(5,7)||color.slice(1,2)+color.slice(1,2),16));
    for(let p=0;p<d.length;p+=4){
@@ -4594,7 +4603,10 @@ function textControls(fontOnly){
   'Fascinate'
  ];
 
- const inflateMax=Math.round(Math.max(8,o.size*.16));
+ // K/P KOLLEKTIV: doubled on user feedback ("vill kunna slidea upp ännu
+ // mer") — kept in sync with the same formula in drawText() above, which
+ // is what actually renders the effect.
+ const inflateMax=Math.round(Math.max(8,o.size*.32));
 
  return `<h2>VALD TEXT</h2>
    ${slider('X',o,'x',0,W)}
