@@ -3269,7 +3269,7 @@ function drawText(t){
    // into an even MORE solid single clump. Gives blur itself a bit of extra
    // reach near the top (up to +30% at max) on top of its straight 1:1 with
    // inflate, so the outline smooths out rounder as well as bigger.
-   const blurAmt=inflate*(1+infT*0.3);
+   const blurAmt=inflate*(1+infT*0.6);
    const mctx=document.createElement('canvas').getContext('2d');
    const w=measureGlyphs(mctx,text,size,font,letterJitter,spacing,seed,true);
    // More headroom than blurAmt*2.5 alone: the solidify threshold below now
@@ -3278,7 +3278,7 @@ function drawText(t){
    // below threshold — the offscreen canvas has to be sized for THAT lowest
    // threshold, not the old higher one, or the edge gets hard-clipped by the
    // canvas boundary itself right where the plumping is most visible.
-   const pad=Math.max(blurAmt*7,size*0.85);
+   const pad=Math.max(blurAmt*8,size*1);
    const offW=Math.max(2,Math.ceil(w+pad*2)),offH=Math.max(2,Math.ceil(size*1.7+pad*2));
    const off=document.createElement('canvas');off.width=offW;off.height=offH;
    const octx=off.getContext('2d');
@@ -3306,7 +3306,7 @@ function drawText(t){
    // blur falloff still counts as solid ink, so letters visibly get
    // plumper the whole way up the slider and, combined with the extra blur
    // reach above, fully melt into one smooth, dense mass right at the end.
-   const threshold=Math.max(6,maxAlpha*(0.46-infT*0.41));
+   const threshold=Math.max(4,maxAlpha*(0.46-infT*0.435));
    const hexN=n=>isNaN(n)?17:n;
    const cr=hexN(parseInt(color.slice(1,3),16)),cg=hexN(parseInt(color.slice(3,5)||color.slice(1,2)+color.slice(1,2),16)),cb=hexN(parseInt(color.slice(5,7)||color.slice(1,2)+color.slice(1,2),16));
    for(let p=0;p<d.length;p+=4){
