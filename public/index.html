@@ -4512,7 +4512,7 @@ function buildControls(){
    <h2 style="margin-top:16px">Risotryck</h2>
    <div class="row"><label>ANTAL FÄRGER</label><select id="risoColors"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5</option></select></div>
    <button id="finishRiso" type="button" style="width:100%;margin-top:6px">Spara färgseparerad pdf</button>
-   <div class="hint" style="margin-top:6px">Delar upp postern i valt antal färger — en ren svart/vit plåt per färg på varsin sida, plus en försättssida med färgnyckel. Redo för risotryck.</div>`;
+   <div class="hint" style="margin-top:6px">Delar upp postern i valt antal färger — en gråskaleplåt per färg på varsin sida (ljusare toner blir ljusare grått, inte hård svart/vit), plus en försättssida med färgnyckel. Redo för risotryck.</div>`;
   document.getElementById('finishPng').onclick=()=>document.getElementById('export').click();
   document.getElementById('finishPdf').onclick=()=>exportPdf();
   document.getElementById('finishRiso').onclick=()=>exportRisoPdf(+document.getElementById('risoColors').value);
@@ -5528,9 +5528,10 @@ function rgbToHexPaint(r,g,b){
  const h=n=>Math.max(0,Math.min(255,Math.round(n))).toString(16).padStart(2,'0');
  return '#'+h(r)+h(g)+h(b);
 }
-// Deliberately lower than EXPORT_SCALE (3×): a riso plate is a bilevel
-// silhouette, not continuous tone, so it doesn't need the same supersampling
-// a photographic PNG/JPEG export does — 2× (≈192dpi at A4) stays crisp on
+// Deliberately lower than EXPORT_SCALE (3×): even though each plate is now
+// a greyscale tint map rather than a flat silhouette, riso duplicators
+// resolve tone through their own halftone screen at print time, not from
+// extra pixel-level supersampling here — 2× (≈192dpi at A4) stays crisp on
 // text/shape edges while keeping the classification pass (the expensive
 // part, done once per real pixel) fast enough to run synchronously.
 const RISO_EXPORT_SCALE=2;
@@ -5581,11 +5582,23 @@ function exportRisoPdf(numColors){
     .sort((a,b)=>a.lum-b.lum)
     .map(x=>x.c);
 
+   // K/P KOLLEKTIV: on user request — plates are now GREYSCALE tint maps,
+   // not flat black/white silhouettes. A pixel still gets assigned to its
+   // single nearest ink colour (same classification as before, unchanged),
+   // but how dark it prints on THAT plate now depends on how close the
+   // pixel's own brightness is to the ink's full-strength brightness: a
+   // lighter tone of the same colour prints as a lighter grey (less ink),
+   // a fully-saturated pixel prints near-black (full ink) — exactly how a
+   // real duotone/spot-colour separation is prepared (the riso duplicator's
+   // own halftone screen turns that continuous grey into dot density when
+   // it prints). inkLum is the ink's own luminance -- precomputed once per
+   // centroid outside the pixel loop, not per pixel.
+   const inkLum=centroids.map(c=>0.299*c[0]+0.587*c[1]+0.114*c[2]);
    // One canvas per plate, same pixel size as the classified render.
    // idata.data.fill(255) is a native typed-array fill (fast) that makes
-   // every plate opaque WHITE by default; the classification pass below
-   // only ever has to blacken the single WINNING plate's pixel, not touch
-   // the other k-1 plates at all.
+   // every plate opaque WHITE (=no ink) by default; the classification
+   // pass below only ever has to write the single WINNING plate's pixel,
+   // not touch the other k-1 plates at all.
    const plates=centroids.map(()=>{
     const pc=document.createElement('canvas');pc.width=id.width;pc.height=id.height;
     const pctx=pc.getContext('2d');
@@ -5604,8 +5617,15 @@ function exportRisoPdf(numColors){
      const dist=dr*dr+dg*dg+db*db;
      if(dist<bestD){bestD=dist;best=c}
     }
+    // coverage: 0 at paper-white, 1 at the ink's own full-strength
+    // brightness (or darker) -- clamped, since real pixels can land
+    // lighter or darker than the cluster's own average tone.
+    const pixLum=0.299*r+0.587*g+0.114*b;
+    const denom=Math.max(1,255-inkLum[best]);
+    const t=Math.max(0,Math.min(1,(255-pixLum)/denom));
+    const gray=Math.round(255*(1-t));
     const pd=plateData[best];
-    pd[i]=0;pd[i+1]=0;pd[i+2]=0;
+    pd[i]=gray;pd[i+1]=gray;pd[i+2]=gray;
    }
    plates.forEach(pl=>pl.ctx.putImageData(pl.idata,0,0));
 
@@ -5635,7 +5655,7 @@ function exportRisoPdf(numColors){
    });
    doc.setFontSize(9);
    doc.text(
-    'Varje efterföljande sida är en ren svart/vit plåt för just den färgen — svart = tryck, vitt = inget. Den ljusaste plåten är ofta pappersfärgen själv och behöver inte tryckas alls.',
+    'Varje efterföljande sida är en gråskaleplåt för just den färgen — mörkare = mer bläck, ljusare = mindre, helt vitt = inget alls. Ljusare toner av samma färg i originalet blir alltså ljusare grått i plåten istället för en hård svart/vit gräns.',
     12,y+6,{maxWidth:pageW-24}
    );
 
