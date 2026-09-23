@@ -258,10 +258,10 @@ aside.panel{
 .role-tag{font-size:9px;color:var(--role);letter-spacing:.14em;margin:5px 0 2px}
 
 /* ---------- overlays / lobby: same paper language, kept as modals ---------- */
-#voteOverlay,#formatVoteOverlay,#finishVoteOverlay,#cameraOverlay{
+#voteOverlay,#formatVoteOverlay,#finishVoteOverlay,#resetVoteOverlay,#cameraOverlay{
   position:fixed;inset:0;background:rgba(255,255,255,.92);z-index:9000;display:none;place-items:center;
 }
-#voteOverlay.show,#formatVoteOverlay.show,#finishVoteOverlay.show,#cameraOverlay.show{display:grid}
+#voteOverlay.show,#formatVoteOverlay.show,#finishVoteOverlay.show,#resetVoteOverlay.show,#cameraOverlay.show{display:grid}
 .modal-card{width:min(440px,92vw);background:var(--paper);border:1px solid var(--line);padding:16px;box-shadow:none}
 .modal-card h2{margin:0 0 8px;border-top:0;padding-top:0}
 #cameraVideo{width:100%;max-height:60vh;background:#000;object-fit:contain;margin:8px 0}
@@ -465,6 +465,7 @@ aside.panel{
          definierad i soloInit()) — tidigare fanns tre olika knappar som
          alla gjorde exakt samma sak. -->
     <button id="anytimeReset" class="danger" type="button" style="width:100%;margin-top:14px">BÖRJA OM</button>
+    <div id="resetVoteStatus" class="hint"></div>
   </aside>
 
 </div>
@@ -490,6 +491,14 @@ aside.panel{
   <div class="grid" style="margin-top:10px">
     <button id="finishVoteYes">JA</button>
     <button id="finishVoteNo" class="danger">NEJ</button>
+  </div>
+</div></div>
+<div id="resetVoteOverlay"><div class="modal-card">
+  <h2>BÖRJA OM?</h2>
+  <div id="resetVoteText" class="hint">Alla måste godkänna. Ett NEJ avbryter. Om alla säger ja kastas hela gruppen tillbaka till de första rollerna och en helt tom poster — alla måste sedan gå igenom alla steg igen.</div>
+  <div class="grid" style="margin-top:10px">
+    <button id="resetVoteYes">JA</button>
+    <button id="resetVoteNo" class="danger">NEJ</button>
   </div>
 </div></div>
 <div id="cameraOverlay"><div class="modal-card">
@@ -558,7 +567,7 @@ function mkFilterCanvas(w,h){
 }
 const socket=io();
 let roomCode=null,mySocketId=null,applyingRemote=false,syncTimer=null,lastSentJSON='',participants=[];
-let assignedRole=null,currentVote=null,currentFormatVote=null,currentFinishVote=null,audioCtx=null,cameraStream=null,drawTool='pen',erasing=false,pendingAssignedRole=null;
+let assignedRole=null,currentVote=null,currentFormatVote=null,currentFinishVote=null,currentResetVote=null,audioCtx=null,cameraStream=null,drawTool='pen',erasing=false,pendingAssignedRole=null;
 // V11: LJUD — small Web Audio cues sprinkled through the app (see
 // primeAudio/voteSound/chatSound above, extended just below), all gated by
 // this one on/off switch so the whole app can be muted from the header.
@@ -781,6 +790,22 @@ function showFinishVote(v){
  ov.classList.toggle('show',!amRequester&&!voted);
 }
 
+// K/P KOLLEKTIV: "BÖRJA OM" — samma unanima omröstningsmönster som de
+// andra tre (rollbyte/formatbyte/avsluta tidigare). Egen overlay/status så
+// den inte krockar med någon av de andra.
+function showResetVote(v){
+ currentResetVote=v||null;
+ const ov=document.getElementById('resetVoteOverlay'),st=document.getElementById('resetVoteStatus');
+ if(!ov)return;
+ if(!v){ov.classList.remove('show');if(st)st.textContent='';return}
+ if(st)st.textContent=`${v.yes}/${v.total} HAR GODKÄNT`;
+ const voted=(v.voters||[]).includes(mySocketId);
+ const amRequester=v.by===mySocketId;
+ document.getElementById('resetVoteText').textContent=
+  `${v.byName||'NÅGON'} VILL BÖRJA OM MED EN HELT NY POSTER · ${v.yes}/${v.total} JA`;
+ ov.classList.toggle('show',!amRequester&&!voted);
+}
+
 function scheduleRoomSync(){
  if(!multiplayerActive()||applyingRemote)return;
  clearTimeout(syncTimer);
@@ -842,6 +867,15 @@ function enterRoom(res){
  const feed=document.getElementById('chatFeed');
  if(feed)feed.innerHTML='';
  document.getElementById('chatBadge')?.classList.add('hidden');
+
+ // K/P KOLLEKTIV: showGuidedFinished is a plain client-side variable, not
+ // part of the server-synced `state` object above — so without this line it
+ // just kept whatever value it had from BEFORE joining (a previous room you
+ // finished, or a finished solo session), and you'd see the "Klar"
+ // export/rensa screen the instant you entered a brand new room that had
+ // never finished anything. The server now always tells us the truth here
+ // (see 'finished' in the create-room/join-room callback).
+ showGuidedFinished=!!res.finished;
 
  applyingRemote=true;
  if(res.state){
@@ -4474,9 +4508,14 @@ function buildControls(){
   el.innerHTML=`<h2>Klar</h2>
    <div class="hint">Alla nio roller är klara. Spara postern, eller klicka BÖRJA OM nedan — du kan fortfarande klicka en roll ovan för att finjustera.</div>
    <button id="finishPng" type="button" style="width:100%;margin-bottom:6px">Spara som png</button>
-   <button id="finishPdf" type="button" style="width:100%">Spara som pdf</button>`;
+   <button id="finishPdf" type="button" style="width:100%">Spara som pdf</button>
+   <h2 style="margin-top:16px">Risotryck</h2>
+   <div class="row"><label>ANTAL FÄRGER</label><select id="risoColors"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5</option></select></div>
+   <button id="finishRiso" type="button" style="width:100%;margin-top:6px">Spara färgseparerad pdf</button>
+   <div class="hint" style="margin-top:6px">Delar upp postern i valt antal färger — en ren svart/vit plåt per färg på varsin sida, plus en försättssida med färgnyckel. Redo för risotryck.</div>`;
   document.getElementById('finishPng').onclick=()=>document.getElementById('export').click();
   document.getElementById('finishPdf').onclick=()=>exportPdf();
+  document.getElementById('finishRiso').onclick=()=>exportRisoPdf(+document.getElementById('risoColors').value);
   return;
  }
  if(mode==='background')s=`<h2>BAKGRUND</h2><div class="row"><label>TYP</label><select id="bgType"><option value="solid">SOLID</option><option value="gradient">GRADIENT</option></select></div><div class="row"><label>FORM</label><select id="bgGradientMode"><option value="organisk">ORGANISK</option><option value="linjär">LINJÄR</option></select></div>${colorRow('FÄRG 1',state.bg,'c1',true)}${colorRow('FÄRG 2',state.bg,'c2',true)}<div id="third">${colorRow('FÄRG 3',state.bg,'c3',true)}</div>${slider('VINKEL',state.bg,'angle',0,360,1,true)}<div class="row"><label>ANTAL</label><select id="bgColors"><option>2</option><option>3</option></select></div><div class="hint">ORGANISK: mjuka, oregelbundna färgzoner som flyter in i varandra. LINJÄR: en rak, jämn gradient i VINKELNS riktning.</div>`;
@@ -5119,6 +5158,58 @@ socket.on('finish-early-complete',()=>{
  updateRoleChoice();
 });
 
+// K/P KOLLEKTIV: "BÖRJA OM" — samma unanima omröstningsmönster som
+// BEGÄR ROLLBYTE/BEGÄR FORMATBYTE/AVSLUTA TIDIGARE ovan. The actual click
+// handler for #anytimeReset lives in soloInit() further down (it also has
+// to cover the solo, non-multiplayer case), but the vote plumbing itself
+// (yes/no buttons, incoming vote/cancel/complete events) is wired here
+// alongside the other three votes.
+document.getElementById('resetVoteYes').onclick=()=>{
+ if(currentResetVote)socket.emit('reset-vote',{room:roomCode,yes:true});
+ document.getElementById('resetVoteOverlay').classList.remove('show');
+};
+document.getElementById('resetVoteNo').onclick=()=>{
+ if(currentResetVote)socket.emit('reset-vote',{room:roomCode,yes:false});
+ document.getElementById('resetVoteOverlay').classList.remove('show');
+};
+socket.on('reset-vote-request',v=>{showResetVote(v);if(v.by!==mySocketId)voteSound()});
+socket.on('reset-vote-state',showResetVote);
+socket.on('reset-vote-cancelled',d=>{
+ showResetVote(null);
+ const st=document.getElementById('resetVoteStatus');
+ st.textContent=(d?.byName||'NÅGON')+' SA NEJ';
+ setTimeout(()=>st.textContent='',1600);
+});
+socket.on('reset-complete',d=>{
+ showResetVote(null);
+ showGuidedFinished=false;
+ selectedSticker=-1;selectedText=-1;selectedPhoto=-1;selectedTexture=-1;drawing=false;activeStroke=null;erasing=false;
+ updatePresence(d.participants||[]);
+ const me=(d.participants||[]).find(p=>p.id===mySocketId);
+ if(me)assignedRole=me.role;
+ if(d.resetBy===mySocketId){
+   // Only the requester's client actually rebuilds the blank poster and
+   // pushes it out through the normal saveLocal()->scheduleRoomSync()
+   // ->state-update path — same "one canonical source" idea as
+   // format-apply-mine, so every client in the room doesn't independently
+   // roll its own randomised background seed and race each other. Everyone
+   // else's canvas catches up a moment later via the usual room-state
+   // broadcast that follows.
+   const f=state.format||{size:'A4',orientation:'portrait'};
+   applyingRemote=true;
+   Object.assign(state,blankState());state.format=f;
+   normalizeState();
+   applyCanvasFormat();
+   applyingRemote=false;
+   lastSentJSON='';
+   saveLocal();
+ }
+ updateRoleChoice();
+ updateSystemBar();
+ soundAdvance();
+ setMode(assignedRole||'background',true);
+});
+
 document.getElementById('createRoom').onclick=()=>{
  primeAudio();
  if(!socket.connected){lobbyMessage('Väntar på servern…','error');return}
@@ -5379,6 +5470,190 @@ function exportPdf(){
    alert('PDF kunde inte skapas i den här webbläsaren.');
  }
 }
+
+// K/P KOLLEKTIV: färgseparerad PDF för risotryck, på användarens begäran
+// ("man kan välja hur många färger som ska separeras (1,2,3,4 eller 5)").
+// Postern kvantiseras till N representativa färger via k-means i RGB-
+// rymden (seedad, samma mulberry32Paint-mönster som resten av CHAOS/
+// PAINT — deterministiskt för en given poster+N). Varje färg blir sedan en
+// egen HELT svart/vit "plåt": en bilevel-mask (svart = tryck den här
+// färgen här, vitt = inget) — det ett risotryckeri faktiskt vill ha, en
+// ren mask per färgkanal utan halvtoner. PDF:en får en försättssida med
+// färgnyckel (svatch + hex + plåtnummer) följt av en ren plåtsida per
+// färg, utan någon text ovanpå själva bilden.
+function kmeansColorsPaint(samples,k,seed){
+ const rnd=mulberry32Paint(seed);
+ const n=samples.length;
+ if(n===0)return Array.from({length:k},()=>[0,0,0]);
+ // k-means++ seeding: spreads the initial centroids out (weighted by
+ // distance to the closest one already picked) instead of picking k
+ // uniformly random samples, which gives much more stable clusters on a
+ // poster that's mostly one or two flat background colours plus a few
+ // small accent shapes — plain random init tends to waste centroids on
+ // near-duplicate background samples.
+ let centroids=[samples[Math.floor(rnd()*n)]];
+ for(let c=1;c<k;c++){
+  const dists=samples.map(p=>{
+   let best=Infinity;
+   for(const cen of centroids){
+    const dr=p[0]-cen[0],dg=p[1]-cen[1],db=p[2]-cen[2];
+    const dd=dr*dr+dg*dg+db*db;
+    if(dd<best)best=dd;
+   }
+   return best;
+  });
+  const sum=dists.reduce((a,b)=>a+b,0);
+  if(sum<=0){centroids.push(samples[Math.floor(rnd()*n)]);continue}
+  let r=rnd()*sum,idx=0;
+  for(;idx<n-1;idx++){r-=dists[idx];if(r<=0)break}
+  centroids.push(samples[idx]);
+ }
+ for(let it=0;it<10;it++){
+  const sums=centroids.map(()=>[0,0,0,0]);
+  for(const p of samples){
+   let best=0,bestD=Infinity;
+   for(let c=0;c<centroids.length;c++){
+    const cen=centroids[c];
+    const dr=p[0]-cen[0],dg=p[1]-cen[1],db=p[2]-cen[2];
+    const dd=dr*dr+dg*dg+db*db;
+    if(dd<bestD){bestD=dd;best=c}
+   }
+   sums[best][0]+=p[0];sums[best][1]+=p[1];sums[best][2]+=p[2];sums[best][3]++;
+  }
+  centroids=centroids.map((cen,c)=>sums[c][3]>0?[sums[c][0]/sums[c][3],sums[c][1]/sums[c][3],sums[c][2]/sums[c][3]]:cen);
+ }
+ return centroids;
+}
+function rgbToHexPaint(r,g,b){
+ const h=n=>Math.max(0,Math.min(255,Math.round(n))).toString(16).padStart(2,'0');
+ return '#'+h(r)+h(g)+h(b);
+}
+// Deliberately lower than EXPORT_SCALE (3×): a riso plate is a bilevel
+// silhouette, not continuous tone, so it doesn't need the same supersampling
+// a photographic PNG/JPEG export does — 2× (≈192dpi at A4) stays crisp on
+// text/shape edges while keeping the classification pass (the expensive
+// part, done once per real pixel) fast enough to run synchronously.
+const RISO_EXPORT_SCALE=2;
+function exportRisoPdf(numColors){
+ if(!window.jspdf||!window.jspdf.jsPDF){
+   alert('PDF-export kunde inte laddas (kräver internetanslutning).');
+   return;
+ }
+ const k=Math.max(1,Math.min(5,Math.round(numColors)||3));
+ const btn=document.getElementById('finishRiso');
+ const oldLabel=btn?btn.textContent:null;
+ if(btn){btn.disabled=true;btn.textContent='ARBETAR …'}
+ // Let the "ARBETAR …" label actually paint before the heavy synchronous
+ // clustering/classification pass below blocks the main thread.
+ setTimeout(()=>{
+  try{
+   const oldW=W,oldH=H;
+   const scale=RISO_EXPORT_SCALE;
+   scaleElementCoords(scale,scale,scale);
+   C.width=Math.round(oldW*scale);C.height=Math.round(oldH*scale);
+   W=C.width;H=C.height;
+   let id;
+   try{
+    render();
+    id=ctx.getImageData(0,0,W,H);
+   }finally{
+    // scale back down — inverse of the same transform, so nothing is left
+    // permanently altered in the editable poster (same pattern as
+    // exportAtScale above).
+    scaleElementCoords(1/scale,1/scale,1/scale);
+    C.width=oldW;C.height=oldH;
+    W=C.width;H=C.height;
+    render();
+   }
+   const d=id.data,pixCount=id.width*id.height;
+   // Sample a bounded number of pixels for clustering — running k-means
+   // over every single export-resolution pixel (can be millions) is
+   // unnecessary for finding representative colours and would crawl.
+   const maxSamples=12000;
+   const stride=Math.max(1,Math.floor(pixCount/maxSamples));
+   const samples=[];
+   for(let p=0;p<pixCount;p+=stride)samples.push([d[p*4],d[p*4+1],d[p*4+2]]);
+   let centroids=kmeansColorsPaint(samples,k,4242);
+   // Darkest -> lightest, so PLATE 1 is always the darkest ink — a stable,
+   // predictable order across repeated exports of the same poster.
+   centroids=centroids
+    .map(c=>({c,lum:0.299*c[0]+0.587*c[1]+0.114*c[2]}))
+    .sort((a,b)=>a.lum-b.lum)
+    .map(x=>x.c);
+
+   // One canvas per plate, same pixel size as the classified render.
+   // idata.data.fill(255) is a native typed-array fill (fast) that makes
+   // every plate opaque WHITE by default; the classification pass below
+   // only ever has to blacken the single WINNING plate's pixel, not touch
+   // the other k-1 plates at all.
+   const plates=centroids.map(()=>{
+    const pc=document.createElement('canvas');pc.width=id.width;pc.height=id.height;
+    const pctx=pc.getContext('2d');
+    const idata=pctx.createImageData(pc.width,pc.height);
+    idata.data.fill(255);
+    return {canvas:pc,ctx:pctx,idata};
+   });
+   const plateData=plates.map(pl=>pl.idata.data);
+   for(let p=0;p<pixCount;p++){
+    const i=p*4;
+    const r=d[i],g=d[i+1],b=d[i+2];
+    let best=0,bestD=Infinity;
+    for(let c=0;c<centroids.length;c++){
+     const cen=centroids[c];
+     const dr=r-cen[0],dg=g-cen[1],db=b-cen[2];
+     const dist=dr*dr+dg*dg+db*db;
+     if(dist<bestD){bestD=dist;best=c}
+    }
+    const pd=plateData[best];
+    pd[i]=0;pd[i+1]=0;pd[i+2]=0;
+   }
+   plates.forEach(pl=>pl.ctx.putImageData(pl.idata,0,0));
+
+   const {jsPDF}=window.jspdf;
+   const size=(state.format?.size||'A4').toLowerCase();
+   const orientation=state.format?.orientation||'portrait';
+   const doc=new jsPDF({orientation,unit:'mm',format:size});
+   const pageW=doc.internal.pageSize.getWidth();
+   const pageH=doc.internal.pageSize.getHeight();
+
+   // Page 1: colour key / legend — the only page with any text/overlay on
+   // it, so every plate page after it stays a clean, ready-to-use master.
+   doc.setFontSize(18);
+   doc.text('RISO-SEPARATION',12,16);
+   doc.setFontSize(10);
+   doc.text(`${centroids.length} FÄRG${centroids.length===1?'':'ER'} · ${size.toUpperCase()} ${orientation==='landscape'?'LANDSKAP':'PORTRÄTT'}`,12,23);
+   let y=36;
+   centroids.forEach((c,i)=>{
+    const hex=rgbToHexPaint(c[0],c[1],c[2]);
+    doc.setFillColor(Math.round(c[0]),Math.round(c[1]),Math.round(c[2]));
+    doc.rect(12,y-5,10,10,'F');
+    doc.setDrawColor(0);
+    doc.rect(12,y-5,10,10);
+    doc.setFontSize(12);
+    doc.text(`PLÅT ${i+1}/${centroids.length} · ${hex.toUpperCase()}`,28,y+1);
+    y+=14;
+   });
+   doc.setFontSize(9);
+   doc.text(
+    'Varje efterföljande sida är en ren svart/vit plåt för just den färgen — svart = tryck, vitt = inget. Den ljusaste plåten är ofta pappersfärgen själv och behöver inte tryckas alls.',
+    12,y+6,{maxWidth:pageW-24}
+   );
+
+   plates.forEach(pl=>{
+    doc.addPage();
+    doc.addImage(pl.canvas.toDataURL('image/png'),'PNG',0,0,pageW,pageH);
+   });
+
+   const stamp=new Date().toISOString().slice(0,10);
+   doc.save(`KOLLEKTIV_RISO_${centroids.length}F_${roomCode||'SOLO'}_${stamp}.pdf`);
+  }catch(err){
+   console.error(err);
+   alert('Riso-PDF kunde inte skapas i den här webbläsaren.');
+  }finally{
+   if(btn){btn.disabled=false;btn.textContent=oldLabel||'Spara riso-separerad pdf'}
+  }
+ },10);
+}
 setMode('paint');
 
 
@@ -5633,6 +5908,10 @@ function soloInit(){
   if(mode===prevRole){if(guidedRole)setMode(guidedRole,true)}
   else if(prevRole)setMode(prevRole,true);
  };
+ // K/P KOLLEKTIV: solo-only now — BÖRJA OM in a room no longer wipes
+ // anything locally on its own (see the #anytimeReset handler below and the
+ // 'reset-complete' socket handler above, which is what actually performs
+ // the equivalent reset once everyone's approved it).
  window.performFullReset=function(){
   const f=state.format||{size:'A4',orientation:'portrait'};
   Object.assign(state,blankState());state.format=f;
@@ -5641,11 +5920,34 @@ function soloInit(){
   showGuidedFinished=false;
   updateRoleChoice();
   setMode(guidedCurrentRole()||'background',true);
-  if(multiplayerActive())socket.emit('reset-room',{room:roomCode});
  };
+ // K/P KOLLEKTIV: on user feedback — BÖRJA OM used to reset unilaterally
+ // (one click, one confirm() dialog, done) even in a room, which felt
+ // wrong two ways at once: nobody else in the room got a say, AND it never
+ // touched anyone's assigned role, so people kept whatever role they'd
+ // rotated to ("rollfördelningen blir konstigt"). In a room this now goes
+ // through the exact same unanimous-vote pattern as BEGÄR ROLLBYTE/BEGÄR
+ // FORMATBYTE/AVSLUTA TIDIGARE — see request-reset (server) and
+ // 'reset-complete' (above) for what actually happens once everyone says
+ // JA: the whole group is thrown back to the first roles and has to
+ // rotate through every step again before reaching "klar". Solo keeps the
+ // old immediate confirm()+reset, since there's nobody else to ask.
  document.getElementById('anytimeReset').onclick=()=>{
-  if(!confirm('Börja om med en helt ny poster?'+(multiplayerActive()?' Detta påverkar alla i rummet.':' Allt nuvarande innehåll försvinner.')))return;
-  performFullReset();
+  if(!multiplayerActive()){
+   if(!confirm('Börja om med en helt ny poster? Allt nuvarande innehåll försvinner.'))return;
+   performFullReset();
+   return;
+  }
+  primeAudio();
+  socket.timeout(6000).emit('request-reset',{room:roomCode},(err,res)=>{
+   if(err||!res?.ok){
+     const st=document.getElementById('resetVoteStatus');
+     st.textContent=res?.error||'KUNDE INTE BEGÄRA ATT BÖRJA OM';
+     setTimeout(()=>st.textContent='',1800);
+   }else{
+     voteSound();
+   }
+  });
  };
  setMode(guidedCurrentRole()||mode||'paint',true);
  updateRoleChoice();

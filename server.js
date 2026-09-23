@@ -69,6 +69,7 @@ class Room {
     this.formatVote = null; // {by, byName, size, orientation, voters:Set}
     this.roleVote = null; // {by, byName, voters:Set}
     this.finishVote = null; // {by, byName, voters:Set} -- "avsluta tidigare"
+    this.resetVote = null; // {by, byName, voters:Set} -- "börja om"
     this.roundsCompleted = 0; // successful role rotations this room has done
     this.createdAt = Date.now();
   }
@@ -117,7 +118,7 @@ io.on('connection', (socket) => {
       rooms.set(code, room);
       socket.join(code);
       socket.data.room = code;
-      cb && cb({ ok: true, room: code, state: room.state, participants: room.list(), role });
+      cb && cb({ ok: true, room: code, state: room.state, participants: room.list(), role, finished: room.roundsCompleted >= GUIDED_ORDER.length });
     } catch (e) {
       cb && cb({ ok: false, error: 'Kunde inte skapa rum.' });
     }
@@ -136,7 +137,14 @@ io.on('connection', (socket) => {
     room.participants.set(socket.id, { id: socket.id, name, role });
     socket.join(code);
     socket.data.room = code;
-    cb && cb({ ok: true, room: code, state: room.state, participants: room.list(), role });
+    // K/P KOLLEKTIV: "finished" wasn't sent here before, so a client that
+    // joined/reconnected into an already-finished room (or a room mid-reset)
+    // had no way to know that except by coincidence of stale local state —
+    // the actual bug behind "det står att jag är klar även om jag går in i
+    // ett nytt rum". Now the client derives showGuidedFinished from this on
+    // every room entry instead of trusting whatever it happened to hold
+    // locally before.
+    cb && cb({ ok: true, room: code, state: room.state, participants: room.list(), role, finished: room.roundsCompleted >= GUIDED_ORDER.length });
     broadcastPresence(room);
   });
 
@@ -248,6 +256,10 @@ io.on('connection', (socket) => {
       cb && cb({ ok: false, error: 'En förfrågan om att avsluta pågår redan.' });
       return;
     }
+    if (room.resetVote) {
+      cb && cb({ ok: false, error: 'En förfrågan om att börja om pågår redan.' });
+      return;
+    }
     const requester = room.participants.get(socket.id);
     room.roleVote = {
       by: socket.id,
@@ -294,6 +306,10 @@ io.on('connection', (socket) => {
       cb && cb({ ok: false, error: 'En rollbytesbegäran pågår redan.' });
       return;
     }
+    if (room.resetVote) {
+      cb && cb({ ok: false, error: 'En förfrågan om att börja om pågår redan.' });
+      return;
+    }
     const requester = room.participants.get(socket.id);
     room.finishVote = {
       by: socket.id,
@@ -335,6 +351,10 @@ io.on('connection', (socket) => {
       cb && cb({ ok: false, error: 'Ogiltigt format.' });
       return;
     }
+    if (room.resetVote) {
+      cb && cb({ ok: false, error: 'En förfrågan om att börja om pågår redan.' });
+      return;
+    }
     const requester = room.participants.get(socket.id);
     room.formatVote = {
       by: socket.id,
@@ -362,18 +382,62 @@ io.on('connection', (socket) => {
     resolveFormatVoteIfReady(room);
   });
 
-  socket.on('reset-room', (payload) => {
+  // K/P KOLLEKTIV: "BÖRJA OM" used to be a unilateral, unconfirmed
+  // 'reset-room' fire-and-forget — any single participant could wipe the
+  // whole room for everyone else with no say, and it never touched anyone's
+  // assigned role (so after a reset people kept whatever role they'd
+  // rotated to, which read as "rollfördelningen blir konstigt"). Replaced
+  // with the same unanimous-vote pattern as request-role/request-format/
+  // request-finish: everyone must approve, and once they do, every
+  // participant's role is reassigned back to the FIRST roles (same rule as
+  // a brand-new room — current join order, starting again from
+  // GUIDED_ORDER[0]) and roundsCompleted resets to 0, so the group has to
+  // rotate through every role again before reaching "klar".
+  socket.on('request-reset', (payload, cb) => {
     const room = getOrNull(payload && payload.room);
-    if (!room || socket.data.room !== room.code) return;
-    // The actual visual reset reaches everyone through the normal
-    // state-update -> room-state path a moment later; this just makes
-    // sure a brand-new joiner right after a reset doesn't see stale
-    // pre-reset content. A fresh poster also means nobody's had any
-    // role yet in this round, so the rotation counter starts over too.
-    room.state = null;
-    room.roundsCompleted = 0;
-    if (room.roleVote) { room.roleVote = null; io.to(room.code).emit('role-request-cancelled', { byName: 'RENSA' }); }
-    if (room.finishVote) { room.finishVote = null; io.to(room.code).emit('finish-vote-cancelled', { byName: 'RENSA' }); }
+    if (!room || socket.data.room !== room.code) {
+      cb && cb({ ok: false, error: 'Du är inte i det rummet.' });
+      return;
+    }
+    if (room.resetVote) {
+      cb && cb({ ok: false, error: 'En förfrågan om att börja om pågår redan.' });
+      return;
+    }
+    if (room.roleVote) {
+      cb && cb({ ok: false, error: 'En rollbytesbegäran pågår redan.' });
+      return;
+    }
+    if (room.finishVote) {
+      cb && cb({ ok: false, error: 'En förfrågan om att avsluta pågår redan.' });
+      return;
+    }
+    if (room.formatVote) {
+      cb && cb({ ok: false, error: 'En förfrågan om formatbyte pågår redan.' });
+      return;
+    }
+    const requester = room.participants.get(socket.id);
+    room.resetVote = {
+      by: socket.id,
+      byName: (requester && requester.name) || 'NÅGON',
+      voters: new Set([socket.id]),
+    };
+    cb && cb({ ok: true });
+    broadcastResetVote(room);
+    resolveResetVoteIfReady(room);
+  });
+
+  socket.on('reset-vote', (payload) => {
+    const room = getOrNull(payload && payload.room);
+    if (!room || socket.data.room !== room.code || !room.resetVote) return;
+    if (payload && payload.yes === false) {
+      const p = room.participants.get(socket.id);
+      io.to(room.code).emit('reset-vote-cancelled', { byName: (p && p.name) || 'NÅGON' });
+      room.resetVote = null;
+      return;
+    }
+    room.resetVote.voters.add(socket.id);
+    broadcastResetVote(room);
+    resolveResetVoteIfReady(room);
   });
 });
 
@@ -452,6 +516,41 @@ function resolveFinishVoteIfReady(room) {
   io.to(room.code).emit('finish-early-complete', {});
 }
 
+function broadcastResetVote(room) {
+  if (!room.resetVote) return;
+  const v = room.resetVote;
+  io.to(room.code).emit('reset-vote-request', {
+    by: v.by,
+    byName: v.byName,
+    yes: v.voters.size,
+    total: room.participants.size,
+    voters: [...v.voters],
+  });
+}
+
+function resolveResetVoteIfReady(room) {
+  const v = room.resetVote;
+  if (!v) return;
+  if (v.voters.size < room.participants.size) return;
+  room.resetVote = null;
+  room.state = null;
+  room.roundsCompleted = 0;
+  // Throw everyone back to the FIRST roles — same rule as a brand-new room
+  // (Room.nextRole/create-room): current join order, starting again from
+  // GUIDED_ORDER[0], not whatever roles people happened to have rotated to.
+  let i = 0;
+  for (const p of room.participants.values()) {
+    p.role = GUIDED_ORDER[i % GUIDED_ORDER.length];
+    i += 1;
+  }
+  // Only the requester's client actually rebuilds the blank poster (fresh
+  // random background seed etc.) and pushes it out via the normal
+  // state-update path — same "one canonical source" pattern as
+  // format-apply-mine above, so every client doesn't independently
+  // generate its own randomised blank state and race the others.
+  io.to(room.code).emit('reset-complete', { participants: room.list(), resetBy: v.by });
+}
+
 function leaveCurrentRoom(socket) {
   const code = socket.data.room;
   if (!code) return;
@@ -478,6 +577,13 @@ function leaveCurrentRoom(socket) {
       io.to(code).emit('finish-vote-cancelled', { byName: 'NÅGON (LÄMNADE RUMMET)' });
     }
   }
+  if (room.resetVote) {
+    room.resetVote.voters.delete(socket.id);
+    if (room.resetVote.by === socket.id) {
+      room.resetVote = null;
+      io.to(code).emit('reset-vote-cancelled', { byName: 'NÅGON (LÄMNADE RUMMET)' });
+    }
+  }
   if (room.participants.size === 0) {
     rooms.delete(code);
     return;
@@ -485,6 +591,7 @@ function leaveCurrentRoom(socket) {
   broadcastPresence(room);
   if (room.formatVote) resolveFormatVoteIfReady(room);
   if (room.roleVote) resolveRoleVoteIfReady(room);
+  if (room.resetVote) resolveResetVoteIfReady(room);
   if (room.finishVote) resolveFinishVoteIfReady(room);
 }
 
