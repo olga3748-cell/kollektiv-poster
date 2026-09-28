@@ -102,6 +102,33 @@ skalar nu efter det tunnaste aktuella draget, så METALL syns tydligt även
 på den lägsta penseltjockleken, medan tjocka drag fortfarande smälter ihop
 precis som innan.
 
+## Återanslutning
+
+Tidigare frigjordes någons roll — och togs hela rummet bort, om man var
+ensam — samma sekund som deras uppkoppling bröts, oavsett orsak. En vanlig
+WiFi-blipp, att mobilen låser skärmen, eller att man råkar ladda om fliken
+räckte för att antingen kastas ut ur sin roll (i en grupp: någon annan
+kunde begära rollbyte och få den) eller, om man var ensam i rummet, tappa
+hela postern permanent.
+
+Servern håller nu istället kvar en frånkopplad persons roll (och rummets
+poster) i 45 sekunder innan platsen faktiskt frigörs. Under de sekunderna
+syns personen i närvarolistan med en nedtonad "· ÅTERANSLUTER…"-markering
+istället för att bara försvinna. Kommer man tillbaka inom de 45 sekunderna
+— uppkopplingen läker av sig själv, man laddar om sidan, eller öppnar
+samma flik igen — återfår man exakt samma roll man hade, istället för att
+tilldelas en ny. Det här bygger på en liten identitet webbläsarfliken
+sparar själv (`sessionStorage`, inte kopplad till kontot eller enheten på
+något annat sätt) och som skickas till servern vid varje anslutning; en
+helt annan flik eller enhet får alltid sin egen nya roll, aldrig någon
+annans.
+
+Ett medvetet klick på **LÄMNA RUM** frigör däremot platsen direkt utan att
+vänta — det är ett aktivt beslut, inte en avbruten uppkoppling.
+
+Väntetiden går att ändra för lokal testning via miljövariabeln
+`KOLLEKTIV_RECONNECT_GRACE_MS` (millisekunder; standard 45000).
+
 ## Köra lokalt
 
 Kräver Node.js 18+.

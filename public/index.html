@@ -107,6 +107,7 @@ header.topbar{
 #presence{display:flex;gap:4px;flex-wrap:wrap}
 .person{border:1px solid var(--hair);padding:2px 6px;font-size:10px;color:var(--ink-dim)}
 .person.me{border-color:var(--role);color:var(--ink)}
+.person.away{opacity:.5;border-style:dashed}
 
 /* ---------- rail: roller / interagera / sparat ---------- */
 nav.rail{
@@ -578,6 +579,30 @@ const liveUntil=new Map();
 let pendingRoom=(new URLSearchParams(location.search).get('room')||'').trim().toUpperCase();
 let reconnectRoom=sessionStorage.getItem('kollektiv-room')||'';
 
+// K/P KOLLEKTIV: RECONNECT — a stable per-tab identity, generated once and
+// kept in sessionStorage (survives a reload of this SAME tab; a brand-new
+// tab/device gets its own, so opening the join link elsewhere still joins
+// as a new person). socket.io always hands a reconnecting client a new
+// socket.id, so without this token the server has no way to tell "this is
+// the same person's WiFi blipping" from "a stranger just joined" — sent on
+// every create-room/join-room so the server can hand back the SAME role
+// instead of a fresh one (see RECONNECT_GRACE_MS in server.js).
+function getClientToken(){
+ try{
+   let t=sessionStorage.getItem('kollektiv-token');
+   if(!t){
+     t=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():('t-'+Math.random().toString(36).slice(2)+Date.now().toString(36));
+     sessionStorage.setItem('kollektiv-token',t);
+   }
+   return t;
+ }catch(e){
+   // Private/incognito mode etc. where sessionStorage throws — still works
+   // for the current page's lifetime, just won't survive a reload, exactly
+   // like before this fix.
+   return window.__kollektivToken=window.__kollektivToken||((window.crypto&&crypto.randomUUID)?crypto.randomUUID():String(Math.random()));
+ }
+}
+
 function safeName(){
  const input=document.getElementById('joinName');
  const n=(input?.value||sessionStorage.getItem('kollektiv-name')||'').trim().slice(0,24);
@@ -832,7 +857,17 @@ function updatePresence(list=[]){
  if(me?.role)assignedRole=me.role;
 
  const el=document.getElementById('presence');
- if(el)el.innerHTML=list.map(p=>`<span data-id="${esc(p.id)}" class="person ${p.id===mySocketId?'me':''} ${(liveUntil.get(p.id)||0)>Date.now()?'live':''}">${esc(p.name||'ANONYM')} / ${esc(ROLE_LABELS[p.role]||p.role||'—')}</span>`).join('');
+ // K/P KOLLEKTIV: RECONNECT — the server now keeps a disconnected
+ // participant's seat (role) reserved for a short grace period instead of
+ // freeing it instantly (see RECONNECT_GRACE_MS in server.js), and marks
+ // them connected:false in the meantime so the rest of the room sees
+ // "återansluter…" rather than that person just silently vanishing.
+ if(el)el.innerHTML=list.map(p=>{
+   const away=p.connected===false;
+   const cls=['person',p.id===mySocketId?'me':'',(liveUntil.get(p.id)||0)>Date.now()?'live':'',away?'away':''].filter(Boolean).join(' ');
+   const label=esc(p.name||'ANONYM')+' / '+esc(ROLE_LABELS[p.role]||p.role||'—')+(away?' · ÅTERANSLUTER…':'');
+   return `<span data-id="${esc(p.id)}" class="${cls}">${label}</span>`;
+ }).join('');
 
  updateRoleLocks();
  updateRoleChoice();
@@ -855,6 +890,12 @@ function enterRoom(res){
  roomCode=res.room;
  mySocketId=socket.id;
  saveIdentity();
+ // K/P KOLLEKTIV: RECONNECT — the server echoes back the token it actually
+ // keyed this seat under (normally identical to what we sent; only differs
+ // if ours was missing/invalid and it had to mint one), so we keep using
+ // that exact value on the next reconnect instead of drifting onto a token
+ // the server no longer recognises.
+ if(res.token){try{sessionStorage.setItem('kollektiv-token',res.token)}catch(e){}}
 
  // K/P KOLLEKTIV: a brand new room has no res.state yet (the server only
  // fills that in once someone actually draws something), but the CLIENT's
@@ -910,14 +951,19 @@ function joinRoom(code,{quiet=false}={}){
    return;
  }
  if(!quiet)lobbyMessage('ÖPPNAR RUM '+code+'…');
- socket.timeout(10000).emit('join-room',{room:code,name:safeName()},(err,res)=>{
+ socket.timeout(10000).emit('join-room',{room:code,name:safeName(),token:getClientToken()},(err,res)=>{
    if(err){
      if(!quiet)lobbyMessage('Servern svarade inte. Försök igen.','error');
      return;
    }
    if(!res?.ok){
-     if(!quiet)lobbyMessage(res?.error||'Kunde inte gå med i rummet.','error');
+     // K/P KOLLEKTIV: shown even when quiet (a background auto-rejoin) —
+     // this specific outcome means the room genuinely doesn't exist any
+     // more, so silently dumping the user at an unexplained empty lobby
+     // would be more confusing than a short message.
+     lobbyMessage(res?.error||'Kunde inte gå med i rummet.','error');
      sessionStorage.removeItem('kollektiv-room');
+     reconnectRoom='';
      return;
    }
    enterRoom(res);
@@ -5215,7 +5261,7 @@ document.getElementById('createRoom').onclick=()=>{
  if(!socket.connected){lobbyMessage('Väntar på servern…','error');return}
  saveIdentity();
  lobbyMessage('SKAPAR RUM…');
- socket.timeout(10000).emit('create-room',{name:safeName()},(err,res)=>{
+ socket.timeout(10000).emit('create-room',{name:safeName(),token:getClientToken()},(err,res)=>{
    if(err){lobbyMessage('Servern svarade inte. Försök igen.','error');return}
    if(!res?.ok){lobbyMessage(res?.error||'Kunde inte skapa rum.','error');return}
    enterRoom(res);
@@ -5266,14 +5312,34 @@ socket.on('connect',()=>{
  setRoomUI();
 
  // Shared links are pre-filled instead of silently entering as ANONYM.
- if(pendingRoom){
+ // K/P KOLLEKTIV: RECONNECT — but enterRoom() itself rewrites the URL to
+ // '?room=CODE' (see history.replaceState below, for the "KOPIERA LÄNK"
+ // button), so reloading a tab that's already inside a room ALSO makes
+ // pendingRoom truthy — indistinguishable from a freshly clicked share
+ // link by presence alone. Telling them apart: a genuinely different link
+ // has a different code than whatever this tab remembers in reconnectRoom;
+ // the same code means this is our own tab coming back, not a new guest,
+ // so it should fall through to the silent auto-rejoin below instead of
+ // stopping to ask for a name again.
+ if(pendingRoom && pendingRoom!==reconnectRoom){
    document.getElementById('joinCode').value=pendingRoom;
    lobbyMessage('RUM '+pendingRoom+' ÄR REDO — SKRIV DITT NAMN OCH GÅ MED.','ok');
    pendingRoom='';
  }else if(roomCode){
-   // Network reconnect while already inside a room.
+   // Network reconnect while already inside a room (the page itself never
+   // reloaded — roomCode is still held in memory from before the blip).
    joinRoom(roomCode,{quiet:true});
- }else if(reconnectRoom && document.getElementById('lobby').classList.contains('hidden')){
+ }else if(reconnectRoom){
+   // K/P KOLLEKTIV: RECONNECT — a fresh page load (reload, or reopening the
+   // tab) that still remembers a room + identity token from this browser
+   // session. This used to be gated on the lobby already being hidden,
+   // which can never be true this early (enterRoom() is the only thing
+   // that hides it, and hasn't run yet on a fresh load) — so a reload
+   // always silently dumped everyone back at the lobby with no room and no
+   // role. Now it actually tries to walk straight back in with the same
+   // token and reclaim the same role, same as the server-side fix that
+   // makes reclaiming possible (see RECONNECT_GRACE_MS in server.js).
+   lobbyMessage('ÅTERANSLUTER TILL '+esc(reconnectRoom)+'…');
    joinRoom(reconnectRoom,{quiet:true});
  }
 });
