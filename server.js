@@ -22,6 +22,7 @@
 // rotera igenom alla roller — se request-finish/finish-vote nedan.
 
 const path = require('path');
+const fs = require('fs');
 const http = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
@@ -41,6 +42,28 @@ const PORT = process.env.PORT || 3000;
 // client and the `prior`/reconnect branch in join-room below.
 const RECONNECT_GRACE_MS = Number(process.env.KOLLEKTIV_RECONNECT_GRACE_MS) || 45000;
 
+// How many recent chat messages a room remembers for anyone joining or
+// reconnecting -- matches the client's own DOM trim (see addChat), so
+// history replay never shows more than a joiner would see live anyway.
+const CHAT_HISTORY_MAX = 30;
+
+// How many shared takes a room keeps at once (oldest dropped first) --
+// matches the solo/local takes gallery's own MAX_TAKES in the client.
+const MAX_TAKES = 12;
+
+// K/P KOLLEKTIV: PERSISTENCE. Rooms used to live only in memory -- a server
+// restart (a deploy, a crash, Render's free tier spinning down) silently
+// wiped every room, every poster, every chat and take, with no warning to
+// whoever was mid-session. Every room is now periodically written to a
+// single JSON file and reloaded on boot, deliberately reusing the SAME
+// reconnect-grace machinery as an ordinary disconnect (see
+// RECONNECT_GRACE_MS above and loadRoomsFromDisk below) rather than
+// building a second, parallel "is this session still valid" mechanism: a
+// restart is treated as "everyone in every room disconnected at once".
+const PERSIST_PATH = process.env.KOLLEKTIV_PERSIST_PATH || path.join(__dirname, 'data', 'rooms.json');
+const PERSIST_DEBOUNCE_MS = 2000;
+let persistTimer = null;
+
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => {
@@ -51,6 +74,16 @@ const server = http.createServer(app);
 const io = new Server(server, {
   pingInterval: 10000,
   pingTimeout: 20000,
+  // K/P KOLLEKTIV: state-update sends the WHOLE poster (not a diff) on
+  // every edit, including any photo data URLs already in it (see
+  // scheduleRoomSync in the client). socket.io's default cap here is 1MB,
+  // which a poster with just a couple of photos can realistically exceed --
+  // past that cap the message is silently rejected and the sender gets
+  // disconnected, which looks to a user like "sync just stopped working"
+  // with no error message anywhere. Raised generously; the real fix
+  // (sending diffs instead of the full state) is a bigger project for if
+  // this ever becomes a real bottleneck.
+  maxHttpBufferSize: 12 * 1024 * 1024,
 });
 
 // Same order as GUIDED_ORDER in the client.
@@ -104,7 +137,23 @@ class Room {
     this.roleVote = null; // {by, byName, voters:Set}
     this.finishVote = null; // {by, byName, voters:Set} -- "avsluta tidigare"
     this.resetVote = null; // {by, byName, voters:Set} -- "börja om"
+    // K/P KOLLEKTIV: ROLLBYTE (SWAP) -- a two-party lateral trade, not a
+    // room-wide vote: only the chosen target needs to approve (not everyone),
+    // and on yes their two roles are exchanged directly. Deliberately kept
+    // separate from roleVote (the group-wide rotation) rather than replacing
+    // it -- see request-swap below. {by, byName, byRole, target, targetName,
+    // targetRole}; no voters:Set since exactly one other person's answer
+    // resolves it either way.
+    this.swapVote = null;
     this.roundsCompleted = 0; // successful role rotations this room has done
+    this.chatLog = []; // last CHAT_HISTORY_MAX quick-chat messages, replayed to new/reconnecting joiners
+    // K/P KOLLEKTIV: TAKES, delat. {id, at, thumb, state, by, byName, auto}
+    // per entry -- `state` (the full serialised poster at that moment) is
+    // kept here but deliberately left OUT of list()/broadcasts (see
+    // publicTakes()); it's only ever sent to whoever explicitly asks to
+    // open that one take (see 'load-take'), so routine presence/gallery
+    // updates don't ship every photo in every saved take to everyone.
+    this.takes = [];
     this.createdAt = Date.now();
   }
   // Public shape only -- NEVER include `token` here. This is broadcast to
@@ -114,6 +163,11 @@ class Room {
   // whoever presents a given token to be its owner).
   list() {
     return [...this.participants.values()].map(({ id, name, role, connected }) => ({ id, name, role, connected }));
+  }
+  // Thumbnail + metadata only -- see the `takes` field comment above for
+  // why the full `state` never goes out in a broadcast/list.
+  publicTakes() {
+    return this.takes.map(({ id, at, thumb, byName, auto }) => ({ id, at, thumb, byName, auto }));
   }
   // The first role in GUIDED_ORDER nobody currently holds — not just
   // "count of participants so far": that broke as soon as anyone left and
@@ -144,6 +198,96 @@ function applyFieldOp(target, fields) {
   if (target && fields && typeof fields === 'object') Object.assign(target, fields);
 }
 
+// Debounced -- state-update fires on nearly every stroke/drag, and writing
+// the whole file (including any photo data URLs in room.state) to disk on
+// every single one would be wasteful and could visibly stutter under heavy
+// editing. Anything within PERSIST_DEBOUNCE_MS of a previous call collapses
+// into one write; schedulePersistNow (used on shutdown) bypasses that.
+function schedulePersist() {
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(persistRoomsNow, PERSIST_DEBOUNCE_MS);
+}
+
+// In-flight votes (roleVote/formatVote/swapVote/…) are deliberately NOT
+// persisted -- they're short-lived and it's harmless for one to simply be
+// gone after a restart (whoever was waiting on it just sees nothing happen
+// and can ask again), versus the real complexity of resurrecting a
+// half-completed group approval tied to sockets that no longer exist.
+function persistRoomsNow() {
+  clearTimeout(persistTimer);
+  persistTimer = null;
+  try {
+    const data = {
+      savedAt: Date.now(),
+      rooms: [...rooms.values()].map((room) => ({
+        code: room.code,
+        participants: [...room.participants.values()].map((p) => ({ id: p.id, name: p.name, role: p.role, token: p.token })),
+        state: room.state,
+        chatLog: room.chatLog,
+        takes: room.takes,
+        roundsCompleted: room.roundsCompleted,
+        createdAt: room.createdAt,
+      })),
+    };
+    fs.mkdirSync(path.dirname(PERSIST_PATH), { recursive: true });
+    // Write to a temp file then rename -- a crash/kill mid-write must never
+    // leave rooms.json half-written and unparsable, wiping every room on
+    // the NEXT boot too. rename() is atomic on the same filesystem.
+    const tmpPath = PERSIST_PATH + '.tmp';
+    fs.writeFileSync(tmpPath, JSON.stringify(data));
+    fs.renameSync(tmpPath, PERSIST_PATH);
+  } catch (e) {
+    console.error('Kunde inte spara rooms.json:', e.message);
+  }
+}
+
+// Run once at boot, before the server starts accepting connections. Every
+// restored participant starts marked connected:false with a fresh
+// RECONNECT_GRACE_MS timer -- exactly scheduleLeave()'s own disconnected
+// state, just entered directly instead of via a socket 'disconnect' event.
+// Anyone who reconnects with their remembered token within that window
+// (see the 'prior' branch in join-room) reclaims their seat and role
+// completely normally; anyone who doesn't is cleaned up by the ordinary
+// finalizeLeave path, same as any other abandoned session.
+function loadRoomsFromDisk() {
+  let raw;
+  try {
+    raw = fs.readFileSync(PERSIST_PATH, 'utf8');
+  } catch (e) {
+    return; // no saved file yet -- perfectly normal on a first boot
+  }
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    console.error('rooms.json gick inte att läsa (ogiltig JSON) -- startar utan sparade rum.');
+    return;
+  }
+  if (!data || !Array.isArray(data.rooms)) return;
+  let restored = 0;
+  for (const saved of data.rooms) {
+    if (!saved || typeof saved.code !== 'string' || !Array.isArray(saved.participants) || !saved.participants.length) continue;
+    const room = new Room(saved.code);
+    room.state = saved.state && typeof saved.state === 'object' ? saved.state : null;
+    room.chatLog = Array.isArray(saved.chatLog) ? saved.chatLog : [];
+    room.takes = Array.isArray(saved.takes) ? saved.takes : [];
+    room.roundsCompleted = Number(saved.roundsCompleted) || 0;
+    room.createdAt = typeof saved.createdAt === 'number' ? saved.createdAt : Date.now();
+    for (const p of saved.participants) {
+      if (!p || typeof p.id !== 'string' || !safeToken(p.token)) continue;
+      const participant = { id: p.id, name: safeName(p.name), role: GUIDED_ORDER.includes(p.role) ? p.role : GUIDED_ORDER[0], token: p.token, connected: false };
+      room.participants.set(p.id, participant);
+      room.tokenIndex.set(p.token, p.id);
+      room.disconnectTimers.set(p.id, setTimeout(() => finalizeLeave(room, p.id), RECONNECT_GRACE_MS));
+    }
+    if (room.participants.size > 0) {
+      rooms.set(room.code, room);
+      restored += 1;
+    }
+  }
+  if (restored) console.log(`Återställde ${restored} rum från ${PERSIST_PATH}.`);
+}
+
 io.on('connection', (socket) => {
   socket.data.room = null;
 
@@ -157,13 +301,14 @@ io.on('connection', (socket) => {
       room.participants.set(socket.id, { id: socket.id, name, role, token, connected: true });
       room.tokenIndex.set(token, socket.id);
       rooms.set(code, room);
+      schedulePersist();
       socket.join(code);
       socket.data.room = code;
       socket.data.token = token;
       // `token` is only ever sent back here, in this socket's own ack --
       // never broadcast (see Room.list()) -- so the client can present the
       // SAME token again after a reconnect and reclaim this exact seat.
-      cb && cb({ ok: true, room: code, state: room.state, participants: room.list(), role, finished: room.roundsCompleted >= GUIDED_ORDER.length, token });
+      cb && cb({ ok: true, room: code, state: room.state, participants: room.list(), role, finished: room.roundsCompleted >= GUIDED_ORDER.length, token, chat: room.chatLog, takes: room.publicTakes() });
     } catch (e) {
       cb && cb({ ok: false, error: 'Kunde inte skapa rum.' });
     }
@@ -202,6 +347,7 @@ io.on('connection', (socket) => {
     }
     room.participants.set(socket.id, { id: socket.id, name, role, token, connected: true });
     room.tokenIndex.set(token, socket.id);
+    schedulePersist();
     socket.join(code);
     socket.data.room = code;
     socket.data.token = token;
@@ -212,7 +358,7 @@ io.on('connection', (socket) => {
     // ett nytt rum". Now the client derives showGuidedFinished from this on
     // every room entry instead of trusting whatever it happened to hold
     // locally before.
-    cb && cb({ ok: true, room: code, state: room.state, participants: room.list(), role, finished: room.roundsCompleted >= GUIDED_ORDER.length, token });
+    cb && cb({ ok: true, room: code, state: room.state, participants: room.list(), role, finished: room.roundsCompleted >= GUIDED_ORDER.length, token, chat: room.chatLog, takes: room.publicTakes() });
     broadcastPresence(room);
   });
 
@@ -237,6 +383,7 @@ io.on('connection', (socket) => {
     if (payload.state && typeof payload.state === 'object') {
       room.state = payload.state;
       socket.to(room.code).emit('room-state', { room: room.code, state: room.state });
+      schedulePersist();
     }
   });
 
@@ -249,6 +396,7 @@ io.on('connection', (socket) => {
       applyFieldOp(room.state[bucket], fields);
     }
     socket.to(room.code).emit('state-op', { room: room.code, type: 'tool', bucket, fields });
+    schedulePersist();
   });
 
   socket.on('object-op', (payload) => {
@@ -260,6 +408,7 @@ io.on('connection', (socket) => {
       applyFieldOp(room.state[bucket][index], fields);
     }
     socket.to(room.code).emit('state-op', { room: room.code, type: 'object', bucket, index, fields });
+    schedulePersist();
   });
 
   socket.on('text-op', (payload) => {
@@ -271,6 +420,7 @@ io.on('connection', (socket) => {
       applyFieldOp(room.state.texts[index], fields);
     }
     socket.to(room.code).emit('state-op', { room: room.code, type: 'text', index, fields });
+    schedulePersist();
   });
 
   socket.on('stroke-add', (payload) => {
@@ -283,6 +433,7 @@ io.on('connection', (socket) => {
       room.state.strokes.push(stroke);
     }
     socket.to(room.code).emit('state-op', { room: room.code, type: 'stroke-add', stroke });
+    schedulePersist();
   });
 
   socket.on('strokes-replace', (payload) => {
@@ -292,18 +443,29 @@ io.on('connection', (socket) => {
     if (!Array.isArray(strokes)) return;
     if (room.state) room.state.strokes = strokes;
     socket.to(room.code).emit('state-op', { room: room.code, type: 'strokes-replace', strokes });
+    schedulePersist();
   });
 
   socket.on('quick-chat', (payload) => {
     const room = getOrNull(payload && payload.room);
     if (!room || socket.data.room !== room.code) return;
     const p = room.participants.get(socket.id);
-    io.to(room.code).emit('quick-chat', {
+    const msg = {
       id: socket.id,
       name: (p && p.name) || 'ANONYM',
       phrase: String((payload && payload.phrase) || '').slice(0, 60),
       at: Date.now(),
-    });
+    };
+    // K/P KOLLEKTIV: chat used to only ever be relayed live -- anyone
+    // joining or reconnecting mid-session saw a blank feed no matter how
+    // much had already been said, with no way to catch up. Kept server-side
+    // now (capped, same 30-line window the client already trims its DOM
+    // to) and handed to every join/create ack (see 'chat' in those
+    // responses) so a new arrival's feed starts populated instead of empty.
+    room.chatLog.push(msg);
+    if (room.chatLog.length > CHAT_HISTORY_MAX) room.chatLog.shift();
+    io.to(room.code).emit('quick-chat', msg);
+    schedulePersist();
   });
 
   socket.on('activity', (payload) => {
@@ -333,6 +495,10 @@ io.on('connection', (socket) => {
     }
     if (room.resetVote) {
       cb && cb({ ok: false, error: 'En förfrågan om att börja om pågår redan.' });
+      return;
+    }
+    if (room.swapVote) {
+      cb && cb({ ok: false, error: 'En rollbytesförfrågan (byte mellan två) pågår redan.' });
       return;
     }
     const requester = room.participants.get(socket.id);
@@ -385,6 +551,10 @@ io.on('connection', (socket) => {
       cb && cb({ ok: false, error: 'En förfrågan om att börja om pågår redan.' });
       return;
     }
+    if (room.swapVote) {
+      cb && cb({ ok: false, error: 'En rollbytesförfrågan (byte mellan två) pågår redan.' });
+      return;
+    }
     const requester = room.participants.get(socket.id);
     room.finishVote = {
       by: socket.id,
@@ -422,12 +592,22 @@ io.on('connection', (socket) => {
       return;
     }
     const { size, orientation } = payload || {};
-    if (!size || !orientation) {
+    // K/P KOLLEKTIV: allowlisted rather than just checked for truthiness --
+    // this is network input, and 'size' ends up embedded in jsPDF's page
+    // constructor on the requester's own client once the vote resolves (see
+    // jspdfFormatFor in the client), so garbage here shouldn't be able to
+    // reach that unchecked. Keep in sync with FORMAT_DIMS/#paperSize in the
+    // client when adding a new size.
+    if (!size || !orientation || !['A4', 'A3', 'Kvadrat'].includes(size) || !['portrait', 'landscape'].includes(orientation)) {
       cb && cb({ ok: false, error: 'Ogiltigt format.' });
       return;
     }
     if (room.resetVote) {
       cb && cb({ ok: false, error: 'En förfrågan om att börja om pågår redan.' });
+      return;
+    }
+    if (room.swapVote) {
+      cb && cb({ ok: false, error: 'En rollbytesförfrågan (byte mellan två) pågår redan.' });
       return;
     }
     const requester = room.participants.get(socket.id);
@@ -490,6 +670,10 @@ io.on('connection', (socket) => {
       cb && cb({ ok: false, error: 'En förfrågan om formatbyte pågår redan.' });
       return;
     }
+    if (room.swapVote) {
+      cb && cb({ ok: false, error: 'En rollbytesförfrågan (byte mellan två) pågår redan.' });
+      return;
+    }
     const requester = room.participants.get(socket.id);
     room.resetVote = {
       by: socket.id,
@@ -513,6 +697,164 @@ io.on('connection', (socket) => {
     room.resetVote.voters.add(socket.id);
     broadcastResetVote(room);
     resolveResetVoteIfReady(room);
+  });
+
+  // K/P KOLLEKTIV: TAKES, delat. A room-shared version of the existing
+  // solo/local takes gallery (see the client's TAKES comment) -- instead of
+  // living only in one browser's localStorage, a take saved in a
+  // multiplayer room is stored here and broadcast to everyone in it.
+  // Saved either manually (someone clicks "Spara take") or automatically
+  // (one per completed role rotation -- see the `by` field on
+  // role-change-complete and the client's role-change-complete handler).
+  socket.on('save-take', (payload, cb) => {
+    const room = getOrNull(payload && payload.room);
+    if (!room || socket.data.room !== room.code) {
+      cb && cb({ ok: false, error: 'Du är inte i det rummet.' });
+      return;
+    }
+    const thumb = typeof (payload && payload.thumb) === 'string' ? payload.thumb : null;
+    const state = typeof (payload && payload.state) === 'string' ? payload.state : null;
+    if (!thumb || !state) {
+      cb && cb({ ok: false, error: 'Ogiltig take.' });
+      return;
+    }
+    const p = room.participants.get(socket.id);
+    const take = {
+      id: 't' + Date.now() + '_' + Math.floor(Math.random() * 1e6),
+      at: Date.now(),
+      thumb,
+      state,
+      by: socket.id,
+      byName: (p && p.name) || 'NÅGON',
+      auto: !!(payload && payload.auto),
+    };
+    room.takes.push(take);
+    if (room.takes.length > MAX_TAKES) room.takes.shift();
+    io.to(room.code).emit('takes-updated', room.publicTakes());
+    schedulePersist();
+    cb && cb({ ok: true, id: take.id });
+  });
+
+  // Full state (including any photos) is only ever sent here, on request
+  // for ONE specific take -- never in the broadcast list (see publicTakes).
+  socket.on('load-take', (payload, cb) => {
+    const room = getOrNull(payload && payload.room);
+    if (!room || socket.data.room !== room.code) {
+      cb && cb({ ok: false, error: 'Du är inte i det rummet.' });
+      return;
+    }
+    const take = room.takes.find((t) => t.id === (payload && payload.id));
+    if (!take) {
+      cb && cb({ ok: false, error: 'Taken finns inte längre.' });
+      return;
+    }
+    cb && cb({ ok: true, state: take.state, thumb: take.thumb, at: take.at, byName: take.byName });
+  });
+
+  socket.on('delete-take', (payload, cb) => {
+    const room = getOrNull(payload && payload.room);
+    if (!room || socket.data.room !== room.code) {
+      cb && cb({ ok: false, error: 'Du är inte i det rummet.' });
+      return;
+    }
+    const before = room.takes.length;
+    room.takes = room.takes.filter((t) => t.id !== (payload && payload.id));
+    if (room.takes.length !== before) {
+      io.to(room.code).emit('takes-updated', room.publicTakes());
+      schedulePersist();
+    }
+    cb && cb({ ok: true });
+  });
+
+  // K/P KOLLEKTIV: ROLLBYTE (SWAP) -- a lateral trade between exactly two
+  // people, alongside (not instead of) the room-wide rotation above. Only
+  // the chosen target has to approve; a NO (from either side) just cancels,
+  // same as every other vote here. On YES their two current roles are
+  // exchanged directly -- this never touches roundsCompleted, since it's a
+  // swap, not a step forward, and doesn't affect the "everyone gets every
+  // role" completion guarantee either way.
+  socket.on('request-swap', (payload, cb) => {
+    const room = getOrNull(payload && payload.room);
+    if (!room || socket.data.room !== room.code) {
+      cb && cb({ ok: false, error: 'Du är inte i det rummet.' });
+      return;
+    }
+    const targetId = payload && payload.target;
+    if (!targetId || targetId === socket.id) {
+      cb && cb({ ok: false, error: 'Välj en annan deltagare att byta roll med.' });
+      return;
+    }
+    const target = room.participants.get(targetId);
+    if (!target) {
+      cb && cb({ ok: false, error: 'Den deltagaren finns inte längre.' });
+      return;
+    }
+    if (target.connected === false) {
+      cb && cb({ ok: false, error: (target.name || 'Den deltagaren') + ' är inte ansluten just nu.' });
+      return;
+    }
+    if (room.swapVote) {
+      cb && cb({ ok: false, error: 'En rollbytesförfrågan (byte mellan två) pågår redan.' });
+      return;
+    }
+    if (room.roleVote) {
+      cb && cb({ ok: false, error: 'En rollbytesbegäran pågår redan.' });
+      return;
+    }
+    if (room.finishVote) {
+      cb && cb({ ok: false, error: 'En förfrågan om att avsluta pågår redan.' });
+      return;
+    }
+    if (room.resetVote) {
+      cb && cb({ ok: false, error: 'En förfrågan om att börja om pågår redan.' });
+      return;
+    }
+    if (room.formatVote) {
+      cb && cb({ ok: false, error: 'En förfrågan om formatbyte pågår redan.' });
+      return;
+    }
+    const requester = room.participants.get(socket.id);
+    room.swapVote = {
+      by: socket.id,
+      byName: (requester && requester.name) || 'NÅGON',
+      byRole: requester && requester.role,
+      target: targetId,
+      targetName: target.name || 'NÅGON',
+      targetRole: target.role,
+    };
+    cb && cb({ ok: true });
+    broadcastSwapVote(room);
+  });
+
+  socket.on('swap-vote', (payload) => {
+    const room = getOrNull(payload && payload.room);
+    if (!room || socket.data.room !== room.code || !room.swapVote) return;
+    const v = room.swapVote;
+    // Only the two people involved can answer -- an onlooker's stray event
+    // (or a stale client from a previous swapVote) can't cancel or resolve
+    // someone else's request.
+    if (socket.id !== v.by && socket.id !== v.target) return;
+    if (payload && payload.yes === false) {
+      const p = room.participants.get(socket.id);
+      const byName = (p && p.name) || 'NÅGON';
+      room.swapVote = null;
+      io.to(v.by).emit('swap-vote-cancelled', { byName });
+      io.to(v.target).emit('swap-vote-cancelled', { byName });
+      return;
+    }
+    // A YES only counts from the target -- the requester already implicitly
+    // said yes by asking (same "auto-yes" convention as every other vote).
+    if (socket.id !== v.target) return;
+    room.swapVote = null;
+    const pa = room.participants.get(v.by);
+    const pb = room.participants.get(v.target);
+    if (pa && pb) {
+      const tmp = pa.role;
+      pa.role = pb.role;
+      pb.role = tmp;
+    }
+    io.to(room.code).emit('swap-complete', { participants: room.list(), a: v.by, b: v.target });
+    schedulePersist();
   });
 });
 
@@ -564,7 +906,15 @@ function resolveRoleVoteIfReady(room) {
   io.to(room.code).emit('role-change-complete', {
     participants: room.list(),
     finished: room.roundsCompleted >= GUIDED_ORDER.length,
+    // K/P KOLLEKTIV: TAKES, delat -- `by` lets the ORIGINAL requester's own
+    // client (and only that one) auto-save a shared take right after a
+    // rotation completes, the same "one canonical actor" pattern already
+    // used for format-apply-mine/reset-complete above, so a lap through all
+    // nine roles builds up a free visual timeline without every client
+    // racing to save its own duplicate.
+    by: v.by,
   });
+  schedulePersist();
 }
 
 function broadcastFinishVote(room) {
@@ -589,6 +939,7 @@ function resolveFinishVoteIfReady(room) {
   // ending early just gets there without actually rotating anyone's role.
   room.roundsCompleted = GUIDED_ORDER.length;
   io.to(room.code).emit('finish-early-complete', {});
+  schedulePersist();
 }
 
 function broadcastResetVote(room) {
@@ -624,6 +975,27 @@ function resolveResetVoteIfReady(room) {
   // format-apply-mine above, so every client doesn't independently
   // generate its own randomised blank state and race the others.
   io.to(room.code).emit('reset-complete', { participants: room.list(), resetBy: v.by });
+  schedulePersist();
+}
+
+// Private to the two people involved, unlike the other broadcastX helpers
+// (which notify the whole room) -- a swap only concerns its requester and
+// target, so onlookers never see the request at all. 'swap-request' is what
+// pops the target's approval overlay; 'swap-request-state' just lets the
+// requester's own UI show a "väntar på svar från X…" status.
+function broadcastSwapVote(room) {
+  if (!room.swapVote) return;
+  const v = room.swapVote;
+  const payload = {
+    by: v.by,
+    byName: v.byName,
+    byRole: v.byRole,
+    target: v.target,
+    targetName: v.targetName,
+    targetRole: v.targetRole,
+  };
+  io.to(v.target).emit('swap-request', payload);
+  io.to(v.by).emit('swap-request-state', payload);
 }
 
 function cancelDisconnectTimer(room, socketId) {
@@ -648,6 +1020,12 @@ function migrateVoteReferences(room, oldId, newId) {
       vote.voters.delete(oldId);
       vote.voters.add(newId);
     }
+  }
+  // swapVote has no voters:Set (see the Room constructor comment) -- just
+  // the two direct id references to fix up.
+  if (room.swapVote) {
+    if (room.swapVote.by === oldId) room.swapVote.by = newId;
+    if (room.swapVote.target === oldId) room.swapVote.target = newId;
   }
 }
 
@@ -707,16 +1085,39 @@ function finalizeLeave(room, socketId) {
       io.to(room.code).emit('reset-vote-cancelled', { byName: 'NÅGON (LÄMNADE RUMMET)' });
     }
   }
+  if (room.swapVote && (room.swapVote.by === socketId || room.swapVote.target === socketId)) {
+    // Either party leaving cancels it outright -- there's no "everyone
+    // else" to fall back on with only two participants involved.
+    const other = room.swapVote.by === socketId ? room.swapVote.target : room.swapVote.by;
+    room.swapVote = null;
+    io.to(other).emit('swap-vote-cancelled', { byName: 'NÅGON (LÄMNADE RUMMET)' });
+  }
   if (room.participants.size === 0) {
     rooms.delete(room.code);
+    schedulePersist(); // so an empty room doesn't linger forever in rooms.json
     return;
   }
   broadcastPresence(room);
+  schedulePersist();
   if (room.formatVote) resolveFormatVoteIfReady(room);
   if (room.roleVote) resolveRoleVoteIfReady(room);
   if (room.resetVote) resolveResetVoteIfReady(room);
   if (room.finishVote) resolveFinishVoteIfReady(room);
 }
+
+loadRoomsFromDisk();
+
+// A graceful shutdown (deploy, container restart, ctrl-C locally) gets one
+// last SYNCHRONOUS save -- persistRoomsNow uses writeFileSync/renameSync
+// specifically so this can run to completion before the process actually
+// exits, unlike the normal debounced schedulePersist path.
+function shutdown(signal) {
+  console.log(`${signal} mottaget, sparar rum till ${PERSIST_PATH}…`);
+  persistRoomsNow();
+  process.exit(0);
+}
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 server.listen(PORT, () => {
   console.log(`KOLLEKTIV/POSTER-server körs på port ${PORT}`);

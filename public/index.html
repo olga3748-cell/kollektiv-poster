@@ -259,10 +259,11 @@ aside.panel{
 .role-tag{font-size:9px;color:var(--role);letter-spacing:.14em;margin:5px 0 2px}
 
 /* ---------- overlays / lobby: same paper language, kept as modals ---------- */
-#voteOverlay,#formatVoteOverlay,#finishVoteOverlay,#resetVoteOverlay,#cameraOverlay{
+#voteOverlay,#formatVoteOverlay,#finishVoteOverlay,#resetVoteOverlay,#swapVoteOverlay,#takePreviewOverlay,#cameraOverlay{
   position:fixed;inset:0;background:rgba(255,255,255,.92);z-index:9000;display:none;place-items:center;
 }
-#voteOverlay.show,#formatVoteOverlay.show,#finishVoteOverlay.show,#resetVoteOverlay.show,#cameraOverlay.show{display:grid}
+#voteOverlay.show,#formatVoteOverlay.show,#finishVoteOverlay.show,#resetVoteOverlay.show,#swapVoteOverlay.show,#takePreviewOverlay.show,#cameraOverlay.show{display:grid}
+#takePreviewImg{max-width:100%;display:block;border:1px solid var(--line);margin-bottom:8px}
 .modal-card{width:min(440px,92vw);background:var(--paper);border:1px solid var(--line);padding:16px;box-shadow:none}
 .modal-card h2{margin:0 0 8px;border-top:0;padding-top:0}
 #cameraVideo{width:100%;max-height:60vh;background:#000;object-fit:contain;margin:8px 0}
@@ -383,6 +384,7 @@ aside.panel{
         <select id="paperSize" aria-label="Pappersformat">
           <option value="A4">A4</option>
           <option value="A3">A3</option>
+          <option value="Kvadrat">KVADRAT</option>
         </select>
         <select id="paperOrientation" aria-label="Orientering">
           <option value="portrait">PORTRÄTT</option>
@@ -453,6 +455,13 @@ aside.panel{
         <button id="chooseRole" style="width:100%">BEGÄR ROLLBYTE</button>
       </div>
       <div id="roleTools"><div id="roleVoteStatus"></div></div>
+      <!-- K/P KOLLEKTIV: ROLLBYTE (SWAP) — en lateral omröstning mellan
+           exakt två personer, ett alternativ till gruppens gemensamma
+           rotation ovan. Bara den valda personen behöver godkänna. -->
+      <div class="hint" style="margin-top:10px">…eller byt roll direkt med en specifik person (bara den personen behöver godkänna):</div>
+      <select id="swapTarget" style="width:100%;margin:5px 0"></select>
+      <button id="requestSwap" style="width:100%">BYT ROLL MED…</button>
+      <div id="swapStatus" class="hint"></div>
     </div>
     <div id="guidedHint" class="hint hidden"></div>
     <div id="guidedActions" class="grid hidden">
@@ -500,6 +509,23 @@ aside.panel{
   <div class="grid" style="margin-top:10px">
     <button id="resetVoteYes">JA</button>
     <button id="resetVoteNo" class="danger">NEJ</button>
+  </div>
+</div></div>
+<div id="swapVoteOverlay"><div class="modal-card">
+  <h2>ROLLBYTE (BYT MED VARANDRA)</h2>
+  <div id="swapVoteText" class="hint">Godkänn för att byta roll direkt med den här personen.</div>
+  <div class="grid" style="margin-top:10px">
+    <button id="swapVoteYes">JA</button>
+    <button id="swapVoteNo" class="danger">NEJ</button>
+  </div>
+</div></div>
+<div id="takePreviewOverlay"><div class="modal-card">
+  <h2>TAKE</h2>
+  <img id="takePreviewImg" alt="">
+  <div id="takePreviewMeta" class="hint"></div>
+  <div class="grid" style="margin-top:10px">
+    <button id="takePreviewMakeLive">GÖR TILL LIVE-POSTER</button>
+    <button id="takePreviewClose" class="danger">STÄNG</button>
   </div>
 </div></div>
 <div id="cameraOverlay"><div class="modal-card">
@@ -568,7 +594,7 @@ function mkFilterCanvas(w,h){
 }
 const socket=io();
 let roomCode=null,mySocketId=null,applyingRemote=false,syncTimer=null,lastSentJSON='',participants=[];
-let assignedRole=null,currentVote=null,currentFormatVote=null,currentFinishVote=null,currentResetVote=null,audioCtx=null,cameraStream=null,drawTool='pen',erasing=false,pendingAssignedRole=null;
+let assignedRole=null,currentVote=null,currentFormatVote=null,currentFinishVote=null,currentResetVote=null,currentSwapVote=null,audioCtx=null,cameraStream=null,drawTool='pen',erasing=false,pendingAssignedRole=null;
 // V11: LJUD — small Web Audio cues sprinkled through the app (see
 // primeAudio/voteSound/chatSound above, extended just below), all gated by
 // this one on/off switch so the whole app can be muted from the header.
@@ -670,8 +696,10 @@ function soundAdvance(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)re
 function soundFinished(){if(!soundEnabled)return;try{primeAudio();if(!audioCtx)return;const n=audioCtx.currentTime;[523,659,784,1046].forEach((f,i)=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='triangle';const t=n+i*.1;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(.09,t);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+.32)})}catch(e){}}
 function updateSystemBar(){
  const el=document.getElementById('systemBar');if(!el)return;
- const f=state.format||{size:'A4',orientation:'portrait'},ori=f.orientation==='landscape'?'LANDSKAP':'PORTRÄTT';
- el.textContent=multiplayerActive()?`RUM ${roomCode} · ${f.size||'A4'} ${ori} · LIVE`:`${f.size||'A4'} ${ori} · EJ ANSLUTEN`;
+ const f=state.format||{size:'A4',orientation:'portrait'};
+ const size=f.size||'A4';
+ const label=size==='Kvadrat'?size:`${size} ${f.orientation==='landscape'?'LANDSKAP':'PORTRÄTT'}`;
+ el.textContent=multiplayerActive()?`RUM ${roomCode} · ${label} · LIVE`:`${label} · EJ ANSLUTEN`;
 }
 function myPerson(){return participants.find(p=>p.id===mySocketId)}
 let lastActivitySent=0;
@@ -762,7 +790,7 @@ function updateGuidedHint(){
   else backBtn.classList.add('hidden');
  }
 }
-function addChat(msg){
+function addChat(msg,silent=false){
  const f=document.getElementById('chatFeed');if(!f)return;
  const d=document.createElement('div');d.className='chat-line';
  const t=new Date(msg.at||Date.now()).toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'});
@@ -776,6 +804,11 @@ function addChat(msg){
  // quick-chat back to the sender too, same pattern as the old sound-react
  // buttons), while the "NYTT"-badge stays reserved for messages from
  // someone else so your own message doesn't badge your own tab.
+ // `silent` is set when replaying server-kept history on room entry (see
+ // enterRoom) -- otherwise joining a room with an active chat would greet
+ // you with a burst of dings and a spurious "NYTT" badge for messages that
+ // were never actually new.
+ if(silent)return;
  chatSound();
  if(msg.id&&msg.id!==mySocketId){
   // K/P KOLLEKTIV: a small red "NYTT" badge on the CHATT tab itself, so a
@@ -849,6 +882,7 @@ function updateRoleChoice(){
  // is true there's nothing left to request.
  const finishBox=document.getElementById('finishChoice');
  if(finishBox)finishBox.classList.toggle('hidden', !(multiplayerActive() && participants.length>0 && !showGuidedFinished));
+ populateSwapTargets();
 }
 function updatePresence(list=[]){
  participants=list;
@@ -902,12 +936,28 @@ function enterRoom(res){
  // own `state` object still held whatever poster was on screen a moment
  // ago — a previous room, or leftover solo content — so without this,
  // creating a new room silently kept the old canvas around instead of
- // starting blank. Same idea for the chat feed: it's DOM the client built
- // up itself and the server never re-sends history, so it has to be wiped
- // by hand on every room entry, new room or existing one.
+ // starting blank. Same for the chat feed: it's DOM the client built up
+ // itself, so any leftover lines from a previous room have to be wiped by
+ // hand before replaying THIS room's own history below.
  const feed=document.getElementById('chatFeed');
  if(feed)feed.innerHTML='';
  document.getElementById('chatBadge')?.classList.add('hidden');
+ // K/P KOLLEKTIV: chatthistorik — the server now keeps the last
+ // CHAT_HISTORY_MAX messages per room and hands them back on every
+ // join/create ack (res.chat), so someone joining or reconnecting mid-
+ // session catches up on what was said instead of seeing a blank feed no
+ // matter how much has already happened. Replayed silently (no ding sound,
+ // no "NYTT" badge) — see addChat(msg,silent) — since none of this is
+ // actually new to the room, only new to this particular screen.
+ if(Array.isArray(res.chat))res.chat.forEach(msg=>addChat(msg,true));
+
+ // K/P KOLLEKTIV: TAKES, delat — swap the takes gallery over to this
+ // room's SHARED list (from the server) for as long as we're in it; see
+ // the 'takes-updated' handler for how it stays live, and #leaveRoom for
+ // switching it back to this browser's own local takes on the way out.
+ takes=Array.isArray(res.takes)?res.takes:[];
+ renderTakesGallery();
+ hideTakePreview();
 
  // K/P KOLLEKTIV: showGuidedFinished is a plain client-side variable, not
  // part of the server-synced `state` object above — so without this line it
@@ -1091,8 +1141,27 @@ const FORMAT_DIMS={
  'A4:portrait':[794,1123],
  'A4:landscape':[1123,794],
  'A3:portrait':[1123,1587],
- 'A3:landscape':[1587,1123]
+ 'A3:landscape':[1587,1123],
+ // K/P KOLLEKTIV: KVADRAT, on user request. No portrait/landscape distinction
+ // (both keys map to the same square) -- ~250×250mm at the same ~96dpi
+ // scale the A4/A3 dims above already use (794px/210mm ≈ 96/25.4), so it
+ // sits between A4 and A3 in physical size rather than being an arbitrary
+ // pixel count.
+ 'Kvadrat:portrait':[945,945],
+ 'Kvadrat:landscape':[945,945]
 };
+// jsPDF's `format` option accepts either a known paper-size NAME ('a4','a3',
+// ...) or an explicit [width,height] pair in the doc's unit. A4/A3 use
+// jsPDF's own built-in definitions (kept exact, no round-trip through px);
+// anything else (KVADRAT, and any future custom size) computes its own
+// [width,height] in mm from FORMAT_DIMS' px values at the same ~96dpi the
+// rest of the app already assumes.
+const PX_PER_MM=96/25.4;
+function jspdfFormatFor(size,orientation){
+ if(size==='A4'||size==='A3')return size.toLowerCase();
+ const dims=FORMAT_DIMS[`${size}:${orientation}`]||FORMAT_DIMS[`${size}:portrait`]||FORMAT_DIMS['A4:portrait'];
+ return [dims[0]/PX_PER_MM,dims[1]/PX_PER_MM];
+}
 function currentFormatKey(){
  const f=state.format||{size:'A4',orientation:'portrait'};
  return `${f.size||'A4'}:${f.orientation||'portrait'}`;
@@ -1105,7 +1174,15 @@ function applyCanvasFormat(){
  const ps=document.getElementById('paperSize'),po=document.getElementById('paperOrientation');
  if(ps)ps.value=state.format?.size||'A4';
  if(po)po.value=state.format?.orientation||'portrait';
+ updateFormatControlsVisibility();
  if(typeof updateSystemBar==='function')updateSystemBar();
+}
+// KVADRAT has no portrait/landscape distinction (see FORMAT_DIMS) -- the
+// orientation picker is meaningless for it, so hide it rather than let
+// people pick a "landscape square" that visibly does nothing.
+function updateFormatControlsVisibility(){
+ const ps=document.getElementById('paperSize'),po=document.getElementById('paperOrientation');
+ if(ps&&po)po.classList.toggle('hidden',ps.value==='Kvadrat');
 }
 function serializableState(){
  return JSON.parse(JSON.stringify(state,(k,v)=>k==='img'?undefined:v));
@@ -1124,8 +1201,15 @@ function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(saveLocal,3
 // the free-jazz framing: you decide the moment to freeze (like a take of a
 // recording), and opening an old take starts a new working copy from it
 // rather than jumping back and discarding what came after — the other
-// takes are never overwritten. Stored under its own localStorage key so
-// RENSA (which wipes the live poster) never touches saved takes.
+// takes are never overwritten. Solo: stored under its own localStorage key
+// so RENSA (which wipes the live poster) never touches saved takes.
+// K/P KOLLEKTIV: TAKES, delat — in a room, `takes` instead mirrors the
+// SERVER's list for that room (see res.takes on join/create and the
+// 'takes-updated' broadcast below), and save/load/delete go through the
+// server instead of localStorage, so every participant sees the same
+// gallery. The full per-take poster state is deliberately never part of
+// that shared list (see publicTakes() in server.js) — only fetched
+// on-demand for the one take someone actually opens (see 'load-take').
 const TAKES_KEY='kollektiv_poster_solo_v22_takes';
 const MAX_TAKES=12;
 let takes=[];
@@ -1148,12 +1232,15 @@ function renderTakesGallery(){
  const el=document.getElementById('takesGallery');
  if(!el)return;
  if(!takes.length){el.innerHTML='<span class="hint">Inga takes sparade ännu.</span>';return}
- el.innerHTML=takes.slice().reverse().map(t=>`
-   <button class="take-card" data-load-take="${t.id}" title="Öppna take från ${fmtTakeTime(t.at)}">
+ el.innerHTML=takes.slice().reverse().map(t=>{
+   const who=t.byName?esc(t.byName)+(t.auto?' · AUTO':'')+' · ':(t.auto?'AUTO · ':'');
+   return `
+   <button class="take-card" data-load-take="${t.id}" title="Öppna take från ${who}${fmtTakeTime(t.at)}">
      <img src="${t.thumb}" alt="">
-     <div class="take-meta">${fmtTakeTime(t.at)}</div>
+     <div class="take-meta">${who}${fmtTakeTime(t.at)}</div>
      <button class="take-del" data-del-take="${t.id}" title="Ta bort take" type="button">×</button>
-   </button>`).join('');
+   </button>`;
+ }).join('');
  el.querySelectorAll('[data-load-take]').forEach(b=>b.onclick=(e)=>{
    if(e.target.closest('[data-del-take]'))return;
    loadTakeById(b.dataset.loadTake);
@@ -1163,38 +1250,76 @@ function renderTakesGallery(){
    deleteTakeById(b.dataset.delTake);
  });
 }
-function saveTakeNow(){
+// `auto` is set on the timeline snapshot taken automatically after each
+// completed group role rotation (see the role-change-complete handler
+// below) — a manual "◉ Spara take" click always passes auto=false/omitted.
+function saveTakeNow(auto=false){
  const thumbCanvas=document.createElement('canvas');
  const tw=180,th=Math.round(tw*H/W);
  thumbCanvas.width=tw;thumbCanvas.height=th;
  thumbCanvas.getContext('2d').drawImage(C,0,0,tw,th);
- const take={
-   id:'t'+Date.now()+'_'+Math.floor(Math.random()*1e6),
-   at:Date.now(),
-   thumb:thumbCanvas.toDataURL('image/jpeg',.72),
-   state:JSON.stringify(serializableState())
- };
+ const thumb=thumbCanvas.toDataURL('image/jpeg',.72);
+ const stateJson=JSON.stringify(serializableState());
+ if(multiplayerActive()){
+   // The server pushes the resulting gallery to everyone (including us) via
+   // 'takes-updated' once it's saved -- no need to touch `takes` locally.
+   socket.emit('save-take',{room:roomCode,thumb,state:stateJson,auto:!!auto});
+   return;
+ }
+ const take={id:'t'+Date.now()+'_'+Math.floor(Math.random()*1e6),at:Date.now(),thumb,state:stateJson};
  takes.push(take);
  if(takes.length>MAX_TAKES)takes=takes.slice(takes.length-MAX_TAKES);
  saveTakes();
  renderTakesGallery();
 }
-function loadTakeById(id){
+// K/P KOLLEKTIV: opening a take in a room used to be able to silently blow
+// away everyone else's live poster with one click -- there's no "just this
+// browser's localStorage" safety net once it's shared. loadTakeById now
+// only opens a small PREVIEW overlay (thumbnail + who/when); actually
+// making it the live poster is a separate, explicit second click (see
+// #takePreviewMakeLive below) in both solo and multiplayer, for the same
+// "don't silently discard the current poster" reason confirm() used to
+// cover alone.
+let takePreviewId=null,takePreviewLocalState=null;
+function showTakePreview(id){
  const take=takes.find(t=>t.id===id);
  if(!take)return;
- if(!confirm('Öppna detta take? Osparade ändringar i den nuvarande postern går förlorade (spara ett eget take först om du vill behålla dem).'))return;
+ takePreviewId=id;
+ takePreviewLocalState=take.state||null; // already in hand for solo; fetched on demand for a shared take
+ const img=document.getElementById('takePreviewImg');
+ if(img)img.src=take.thumb;
+ const meta=document.getElementById('takePreviewMeta');
+ if(meta)meta.textContent=(take.byName?take.byName+' · ':'')+fmtTakeTime(take.at)+(take.auto?' · SPARAD AUTOMATISKT VID ROLLBYTE':'');
+ document.getElementById('takePreviewOverlay')?.classList.add('show');
+}
+function hideTakePreview(){
+ takePreviewId=null;takePreviewLocalState=null;
+ document.getElementById('takePreviewOverlay')?.classList.remove('show');
+}
+function applyTakeStateJson(rawState){
  try{
-   const snap=JSON.parse(take.state);
+   const snap=JSON.parse(rawState);
    const hadGuided=!!snap.guided;
    Object.assign(state,blankState(),snap);
    markGuidedCompleteIfLegacy(hadGuided);
    normalizeState();applyCanvasFormat();hydratePhotos();
    selectedSticker=-1;selectedText=-1;selectedPhoto=-1;selectedTexture=-1;drawing=false;activeStroke=null;
+   lastSentJSON='';
+   // In a room this also pushes the take out to everyone else, the same
+   // "one canonical actor" way BÖRJA OM/formatbyte already do (see
+   // saveLocal -> scheduleRoomSync).
    saveLocal();buildControls();render();
  }catch(e){alert('Kunde inte läsa in take.')}
 }
+function loadTakeById(id){
+ showTakePreview(id);
+}
 function deleteTakeById(id){
  if(!confirm('Ta bort det här take?'))return;
+ if(multiplayerActive()){
+   socket.emit('delete-take',{room:roomCode,id});
+   return;
+ }
  takes=takes.filter(t=>t.id!==id);
  saveTakes();
  renderTakesGallery();
@@ -5053,14 +5178,19 @@ function showFormatVote(v){
  if(!v){ov.classList.remove('show');st.textContent='';return}
  const voted=(v.voters||[]).includes(mySocketId);
  st.textContent=`${v.yes}/${v.total} HAR RÖSTAT JA`;
+ const oriText=v.size==='Kvadrat'?'':' · '+(v.orientation==='landscape'?'LANDSKAP':'PORTRÄTT');
  document.getElementById('formatVoteText').textContent=
-  `${v.byName||'NÅGON'} VILL BYTA TILL ${v.size} · ${v.orientation==='landscape'?'LANDSKAP':'PORTRÄTT'} · ${v.yes}/${v.total} JA`;
+  `${v.byName||'NÅGON'} VILL BYTA TILL ${v.size}${oriText} · ${v.yes}/${v.total} JA`;
  ov.classList.toggle('show',!voted);
 }
+document.getElementById('paperSize').onchange=updateFormatControlsVisibility;
 document.getElementById('requestFormat').onclick=()=>{
  if(!multiplayerActive())return;
  const size=document.getElementById('paperSize').value;
- const orientation=document.getElementById('paperOrientation').value;
+ // KVADRAT has no orientation (see FORMAT_DIMS/updateFormatControlsVisibility)
+ // -- always send 'portrait' for it regardless of whatever the (hidden)
+ // orientation select still holds from a previous A4/A3 choice.
+ const orientation=size==='Kvadrat'?'portrait':document.getElementById('paperOrientation').value;
  socket.timeout(6000).emit('request-format',{room:roomCode,size,orientation},(err,res)=>{
   if(err||!res?.ok){
    const st=document.getElementById('formatStatus');
@@ -5141,6 +5271,13 @@ socket.on('role-change-complete',d=>{
  updatePresence(d.participants||[]);
  const me=(d.participants||[]).find(p=>p.id===mySocketId);
  if(me)applyMyRole(me.role);
+ // K/P KOLLEKTIV: TAKES, delat — one automatic snapshot per completed
+ // rotation, building a free visual timeline of the poster's progress.
+ // Only the ORIGINAL requester's client does this (the `by` field the
+ // server includes for exactly this reason), same "one canonical actor"
+ // pattern as format-apply-mine/reset-complete, so the room doesn't end up
+ // with N duplicate takes from N clients all reacting to the same event.
+ if(d.by===mySocketId && multiplayerActive())saveTakeNow(true);
  // K/P KOLLEKTIV: not "klar" just because someone reached CHAOS — the
  // server only sends finished:true once the room has rotated all the way
  // around GUIDED_ORDER, i.e. everyone has had every role at least once.
@@ -5162,6 +5299,111 @@ document.getElementById('chooseRole').onclick=()=>{
      voteSound();
    }
  });
+};
+
+// K/P KOLLEKTIV: ROLLBYTE (SWAP) — a lateral trade between exactly two
+// people, alongside (not instead of) BEGÄR ROLLBYTE above. Only the chosen
+// target has to approve (see request-swap/swap-vote in server.js) — this
+// button just picks who from a select of the room's OTHER connected
+// participants, refreshed every time the panel updates (see
+// populateSwapTargets, called from updateRoleChoice).
+function populateSwapTargets(){
+ const sel=document.getElementById('swapTarget');
+ if(!sel)return;
+ const others=(participants||[]).filter(p=>p.id!==mySocketId&&p.connected!==false);
+ const prev=sel.value;
+ sel.innerHTML=others.length
+  ?others.map(p=>`<option value="${esc(p.id)}">${esc(p.name||'ANONYM')} · ${esc(ROLE_LABELS[p.role]||p.role||'—')}</option>`).join('')
+  :'<option value="">(ingen annan just nu)</option>';
+ if(others.some(p=>p.id===prev))sel.value=prev;
+ const btn=document.getElementById('requestSwap');
+ if(btn)btn.disabled=!others.length;
+}
+document.getElementById('requestSwap').onclick=()=>{
+ if(!multiplayerActive())return;
+ const sel=document.getElementById('swapTarget');
+ const target=sel&&sel.value;
+ const st=document.getElementById('swapStatus');
+ if(!target){if(st)st.textContent='INGEN ATT BYTA MED.';return}
+ primeAudio();
+ socket.timeout(6000).emit('request-swap',{room:roomCode,target},(err,res)=>{
+   if(err||!res?.ok){
+     if(st){st.textContent=res?.error||'KUNDE INTE BEGÄRA ROLLBYTE';setTimeout(()=>{if(st.textContent&&!currentSwapVote)st.textContent=''},1800);}
+   }else{
+     voteSound();
+   }
+ });
+};
+document.getElementById('swapVoteYes').onclick=()=>{
+ if(currentSwapVote)socket.emit('swap-vote',{room:roomCode,yes:true});
+ document.getElementById('swapVoteOverlay').classList.remove('show');
+};
+document.getElementById('swapVoteNo').onclick=()=>{
+ if(currentSwapVote)socket.emit('swap-vote',{room:roomCode,yes:false});
+ document.getElementById('swapVoteOverlay').classList.remove('show');
+};
+// Two DIFFERENT incoming events, unlike the room-wide votes above: only the
+// TARGET gets 'swap-request' (pops the JA/NEJ overlay), only the REQUESTER
+// gets 'swap-request-state' (just a "väntar på svar…" status line) — see
+// broadcastSwapVote in server.js, which deliberately never tells the rest
+// of the room about a two-person swap in progress.
+socket.on('swap-request',v=>{
+ currentSwapVote=v||null;
+ const ov=document.getElementById('swapVoteOverlay');
+ if(!v){ov.classList.remove('show');return}
+ document.getElementById('swapVoteText').textContent=
+  `${v.byName||'NÅGON'} (${ROLE_LABELS[v.byRole]||v.byRole||'—'}) VILL BYTA ROLL MED DIG (${ROLE_LABELS[v.targetRole]||v.targetRole||'—'})`;
+ ov.classList.add('show');
+ voteSound();
+});
+socket.on('swap-request-state',v=>{
+ currentSwapVote=v||null;
+ const st=document.getElementById('swapStatus');
+ if(!st)return;
+ st.textContent=v?`VÄNTAR PÅ SVAR FRÅN ${v.targetName||'NÅGON'}…`:'';
+});
+socket.on('swap-vote-cancelled',d=>{
+ currentSwapVote=null;
+ document.getElementById('swapVoteOverlay').classList.remove('show');
+ const st=document.getElementById('swapStatus');
+ if(st){st.textContent=(d?.byName||'NÅGON')+' SA NEJ';setTimeout(()=>{if(!currentSwapVote)st.textContent=''},1600);}
+});
+socket.on('swap-complete',d=>{
+ currentSwapVote=null;
+ document.getElementById('swapVoteOverlay').classList.remove('show');
+ const st=document.getElementById('swapStatus');
+ if(st)st.textContent='';
+ updatePresence(d.participants||[]);
+ const me=(d.participants||[]).find(p=>p.id===mySocketId);
+ if(me)applyMyRole(me.role);
+ soundAdvance();
+});
+
+// K/P KOLLEKTIV: TAKES, delat — the server pushes this to everyone in the
+// room whenever the shared gallery changes (save/delete, by anyone).
+socket.on('takes-updated',list=>{
+ takes=Array.isArray(list)?list:[];
+ renderTakesGallery();
+ // If the take someone had open in the preview overlay just got deleted by
+ // someone else, don't leave a stale "GÖR TILL LIVE-POSTER" button pointing
+ // at nothing.
+ if(takePreviewId&&!takes.find(t=>t.id===takePreviewId))hideTakePreview();
+});
+document.getElementById('takePreviewClose').onclick=hideTakePreview;
+document.getElementById('takePreviewMakeLive').onclick=()=>{
+ if(!takePreviewId)return;
+ const id=takePreviewId;
+ if(multiplayerActive()){
+   hideTakePreview();
+   socket.timeout(8000).emit('load-take',{room:roomCode,id},(err,res)=>{
+     if(err||!res?.ok){alert((res&&res.error)||'Kunde inte hämta taket.');return}
+     applyTakeStateJson(res.state);
+   });
+ }else{
+   const raw=takePreviewLocalState;
+   hideTakePreview();
+   if(raw)applyTakeStateJson(raw);
+ }
 };
 
 // K/P KOLLEKTIV: "avsluta tidigare" — begär att hela gruppen hoppar
@@ -5302,6 +5544,12 @@ document.getElementById('leaveRoom').onclick=()=>{
  roomCode=null;participants=[];
  sessionStorage.removeItem('kollektiv-room');
  history.replaceState(null,'',location.pathname);
+ // K/P KOLLEKTIV: TAKES, delat — back to this browser's own local takes
+ // now that the room's shared gallery no longer applies. Also drop any
+ // vote overlay tied to that room (nothing left to answer once we've left).
+ loadTakes();renderTakesGallery();hideTakePreview();
+ showVote(null);showFormatVote(null);showFinishVote(null);showResetVote(null);
+ currentSwapVote=null;document.getElementById('swapVoteOverlay')?.classList.remove('show');
  setRoomUI();
  document.getElementById('lobby').classList.remove('hidden');
  lobbyMessage('');
@@ -5522,9 +5770,9 @@ function exportPdf(){
  }
  try{
    const {jsPDF}=window.jspdf;
-   const size=(state.format?.size||'A4').toLowerCase();
+   const pdfSize=state.format?.size||'A4';
    const orientation=state.format?.orientation||'portrait';
-   const doc=new jsPDF({orientation,unit:'mm',format:size});
+   const doc=new jsPDF({orientation,unit:'mm',format:jspdfFormatFor(pdfSize,orientation)});
    const pageW=doc.internal.pageSize.getWidth();
    const pageH=doc.internal.pageSize.getHeight();
    const dataUrl=exportAtScale(EXPORT_SCALE,'image/jpeg',0.92);
@@ -5696,9 +5944,9 @@ function exportRisoPdf(numColors){
    plates.forEach(pl=>pl.ctx.putImageData(pl.idata,0,0));
 
    const {jsPDF}=window.jspdf;
-   const size=(state.format?.size||'A4').toLowerCase();
+   const pdfSize=state.format?.size||'A4';
    const orientation=state.format?.orientation||'portrait';
-   const doc=new jsPDF({orientation,unit:'mm',format:size});
+   const doc=new jsPDF({orientation,unit:'mm',format:jspdfFormatFor(pdfSize,orientation)});
    const pageW=doc.internal.pageSize.getWidth();
    const pageH=doc.internal.pageSize.getHeight();
 
@@ -5707,7 +5955,8 @@ function exportRisoPdf(numColors){
    doc.setFontSize(18);
    doc.text('RISO-SEPARATION',12,16);
    doc.setFontSize(10);
-   doc.text(`${centroids.length} FÄRG${centroids.length===1?'':'ER'} · ${size.toUpperCase()} ${orientation==='landscape'?'LANDSKAP':'PORTRÄTT'}`,12,23);
+   const orientationLabel=pdfSize==='Kvadrat'?'':' '+(orientation==='landscape'?'LANDSKAP':'PORTRÄTT');
+   doc.text(`${centroids.length} FÄRG${centroids.length===1?'':'ER'} · ${pdfSize.toUpperCase()}${orientationLabel}`,12,23);
    let y=36;
    centroids.forEach((c,i)=>{
     const hex=rgbToHexPaint(c[0],c[1],c[2]);

@@ -44,8 +44,9 @@ att begära då) och dyker upp igen om man rensar och börjar om.
 Att klicka på en rollknapp i vänsterspalten (t.ex. "CHAOS") byter INTE
 roll — de knapparna växlar bara vilken verktygspanel man tittar på bland
 de roller man faktiskt får ha just nu (sin egen, plus ett steg bakåt för
-att kika). Det enda sättet att faktiskt byta roll är BEGÄR ROLLBYTE och
-allas godkännande.
+att kika). De enda sätten att faktiskt byta roll är BEGÄR ROLLBYTE (hela
+gruppen, allas godkännande) eller BYT ROLL MED… (bara en specifik person,
+se "Rollbyte mellan två (swap)" nedan).
 
 Den gamla soloflödets "GÅ VIDARE"-knapp (som flyttar bara dig själv genom
 rollerna) är avstängd i den här varianten, eftersom det inte är ett
@@ -128,6 +129,85 @@ vänta — det är ett aktivt beslut, inte en avbruten uppkoppling.
 
 Väntetiden går att ändra för lokal testning via miljövariabeln
 `KOLLEKTIV_RECONNECT_GRACE_MS` (millisekunder; standard 45000).
+
+## Rollbyte mellan två (swap)
+
+Utöver BEGÄR ROLLBYTE (hela gruppen roterar ett steg framåt tillsammans,
+se ovan) finns nu ett andra sätt att byta roll: **BYT ROLL MED…**, under
+"DIN ROLL" i högerspalten. Man väljer en specifik person i listan och
+klickar — bara *den* personen behöver godkänna (inte hela gruppen), och
+säger de ja byts de bådas roller direkt med varandra. Ett NEJ avbryter.
+
+Det här är ett komplement, inte en ersättning — gruppens gemensamma
+rotation fungerar precis som innan och påverkas inte av ett enskilt byte.
+En swap räknas heller inte som ett steg i rotationen: den ändrar bara vem
+som har vilken av de roller gruppen redan roterat fram till, den flyttar
+ingen närmare (eller längre från) att vara klar. Bara en förfrågan (av
+vilket slag som helst — rollbyte, formatbyte, avsluta tidigare, börja om,
+eller ett rollbyte-swap) kan pågå åt gången i ett rum.
+
+## KVADRAT-format
+
+Utöver A4 och A3 går det nu att välja **KVADRAT** som pappersformat (samma
+BYT FORMAT-ruta som innan, under "interagera"). Kvadrat har ingen
+liggande/stående-variant — det alternativet döljs automatiskt så fort
+KVADRAT är valt, eftersom det inte skulle betyda något för en kvadrat.
+Precis som A4/A3 måste alla i rummet godkänna innan formatet faktiskt
+byts, eftersom det skalar om hela postern åt alla.
+
+## Delade takes
+
+"◉ Spara take"-galleriet (samma frysta ögonblicksbilder som i
+soloversionen) är nu **delat** i ett rum istället för att bara ligga lokalt
+i en enskild webbläsare — sparar någon ett take ser alla andra i rummet
+det i samma galleri, direkt.
+
+Utöver manuella klick på "◉ Spara take" sparas nu även **ett take
+automatiskt varje gång gruppen roterar roller** (BEGÄR ROLLBYTE, inte
+swap-bytet ovan) — så man får en gratis, visuell tidslinje av hur postern
+växer fram genom hela sessionen, helt utan att någon behöver komma ihåg
+att spara själv.
+
+Att klicka på ett take i galleriet öppnar numera en **förhandsgranskning**
+(bild + vem/när) istället för att direkt byta ut den levande postern —
+eftersom det skulle drabba *alla* i rummet på en gång, inte bara den som
+klickade. Först ett klick till på "GÖR TILL LIVE-POSTER" i den rutan
+faktiskt öppnar det taket som allas gemensamma poster (samma
+"en person utför det, alla andra synkas"-mönster som formatbyte/börja om).
+"STÄNG" lämnar allt orört.
+
+Lämnar man rummet (LÄMNA RUM) växlar galleriet tillbaka till den här
+webbläsarens egna, lokala takes, precis som i sololäget.
+
+## Chatthistorik
+
+Chatten (de åtta snabbfraserna) kom tidigare bara fram live — den som
+gick med eller kopplade upp sig på nytt mitt i en session såg ett tomt
+flöde oavsett hur mycket som redan sagts. Servern minns nu de senaste 30
+meddelandena per rum och visar dem direkt (utan ljud eller "NYTT"-märke,
+eftersom inget av det faktiskt är nytt) så fort man går med eller kommer
+tillbaka.
+
+## Sparat mellan omstarter
+
+Rum, poster, chatt och delade takes låg tidigare bara i serverns minne —
+en omstart (en ny driftsättning, en krasch, eller att den fria nivån hos
+en värdtjänst som Render.com stänger av servern vid inaktivitet) rensade
+tyst bort allt, utan förvarning för den som satt mitt i en session.
+
+Servern sparar nu regelbundet varje rum till en fil (`data/rooms.json`,
+skapas automatiskt) och läser in den igen vid start. En omstart hanteras
+som "alla i alla rum kopplade från samtidigt" — samma 45-sekunders
+återanslutningsfönster som ovan, bara startat direkt vid uppstart istället
+för vid en enskild persons uppkopplingsbrott. Kommer man tillbaka (samma
+flik, samma återanslutningsidentitet) inom fönstret återfår man sin roll
+och sin poster som om inget hänt; annars frigörs platsen som vanligt.
+
+Filens plats går att ändra via miljövariabeln `KOLLEKTIV_PERSIST_PATH`
+(används bland annat för att köra flera testservrar parallellt utan att
+de skriver över varandras sparade rum). `data/`-mappen är avsiktligt
+utelämnad från git (se `.gitignore`) — den är genererad, inget att spara
+i ett repo.
 
 ## Köra lokalt
 
