@@ -103,6 +103,16 @@ skalar nu efter det tunnaste aktuella draget, så METALL syns tydligt även
 på den lägsta penseltjockleken, medan tjocka drag fortfarande smälter ihop
 precis som innan.
 
+METALL/MÅLADs kornighet ("små perforerade prickar") kunde tidigare bli
+kraftigt mycket tätare i den exporterade filen än i live-vyn — på ett
+kvadratiskt format upp mot ~80 gånger tätare. Antalet korn skalades upp med
+ytan samtidigt som varje korns egen storlek skalades upp med upplösningen;
+var för sig rimliga fixar, men tillsammans dubbelräknade de samma
+upplösningsökning. Ett tunt drag som såg nästan solid ut live kunde därför
+bli synligt "hålig"/prickig i export. Nu skalas bara kornens storlek —
+antalet hålls fast — vilket håller kornigheten proportionerligt likadan
+oavsett export-skala eller pappersformat.
+
 ## Återanslutning
 
 Tidigare frigjordes någons roll — och togs hela rummet bort, om man var

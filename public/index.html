@@ -2482,7 +2482,21 @@ function renderMergedPaintStrokes(strokes){
   sctx.drawImage(rimHiTinted,0,0,mw,mh,0,0,W,H);
   sctx.restore();
 
-  scatterPaintGrain(sctx,x0,y0,x1,y1,1337,Math.round(7000*paintGrainScale()),0.025,0.035,paintRes);
+  // K/P KOLLEKTIV: this used to multiply the COUNT by paintGrainScale() (~
+  // canvas-area ratio) on top of scaling each speck's own SIZE by paintRes
+  // (~linear canvas-width ratio) just above. Individually those both sound
+  // like the right export fix, but stacked they double-count the same
+  // resolution change: speck AREA already grows with paintRes² (since px is
+  // linear), which already matches the canvas's own area growth — so count
+  // alone should stay fixed for the grain's DENSITY (ink-covered fraction of
+  // the poster) to stay constant. With both applied, density grew with the
+  // SQUARE of the export ratio — proportionally ~9x at EXPORT_SCALE=3, up to
+  // ~80x on a bigger physical format like Kvadrat — turning MÅLAD/METALL's
+  // intentionally subtle "små perforerade prickar" grain into a dramatically
+  // perforated dot pattern on export while looking fine live (reported as
+  // "bild 1 är vyn i programmet ... bild 2 är exporten" — ser olika ut).
+  // Dropping the count-side scaling keeps density resolution-independent.
+  scatterPaintGrain(sctx,x0,y0,x1,y1,1337,7000,0.025,0.035,paintRes);
  }else{
   const hi=mixWhitePaint(base,.32), lo=mixBlackPaint(base,.42);
   sctx.fillStyle=rgbStrPaint(base); sctx.fillRect(0,0,W,H);
@@ -2514,7 +2528,14 @@ function renderMergedPaintStrokes(strokes){
   });
   sctx.globalCompositeOperation='source-over';
 
-  scatterPaintGrain(sctx,x0,y0,x1,y1,4242,Math.round(16000*paintGrainScale()),0.07,0.07,paintRes);
+  // K/P KOLLEKTIV: same double-scaling fix as the shiny/METALL grain call
+  // above — px already carries the resolution correction (paintRes), so
+  // count no longer also multiplies by paintGrainScale() on top of that.
+  scatterPaintGrain(sctx,x0,y0,x1,y1,4242,16000,0.07,0.07,paintRes);
+  // NOTE: the small fleck loop just below is a DIFFERENT balance — its dot
+  // radius (fr) is NOT resolution-scaled, so scaling its count alone by
+  // paintGrainScale() is the correct (not double-counted) way to keep ITS
+  // density constant across live/export; left as-is.
   const fleckRnd=mulberry32Paint(5151);
   for(let i=0;i<Math.round(140*paintGrainScale());i++){
    const gx=x0+fleckRnd()*(x1-x0),gy=y0+fleckRnd()*(y1-y0);
