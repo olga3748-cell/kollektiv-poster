@@ -162,11 +162,10 @@ soloversionen) är nu **delat** i ett rum istället för att bara ligga lokalt
 i en enskild webbläsare — sparar någon ett take ser alla andra i rummet
 det i samma galleri, direkt.
 
-Utöver manuella klick på "◉ Spara take" sparas nu även **ett take
-automatiskt varje gång gruppen roterar roller** (BEGÄR ROLLBYTE, inte
-swap-bytet ovan) — så man får en gratis, visuell tidslinje av hur postern
-växer fram genom hela sessionen, helt utan att någon behöver komma ihåg
-att spara själv.
+Sparandet är fortfarande bara manuellt — ett klick på "◉ Spara take" —
+oavsett om man är ensam eller i ett rum. (Ett automatiskt take vid varje
+rollrotation testades, men fyllde galleriet med takes ingen bett om, så
+det är borttaget igen.)
 
 Att klicka på ett take i galleriet öppnar numera en **förhandsgranskning**
 (bild + vem/när) istället för att direkt byta ut den levande postern —

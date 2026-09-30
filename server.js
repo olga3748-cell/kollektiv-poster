@@ -906,12 +906,12 @@ function resolveRoleVoteIfReady(room) {
   io.to(room.code).emit('role-change-complete', {
     participants: room.list(),
     finished: room.roundsCompleted >= GUIDED_ORDER.length,
-    // K/P KOLLEKTIV: TAKES, delat -- `by` lets the ORIGINAL requester's own
-    // client (and only that one) auto-save a shared take right after a
-    // rotation completes, the same "one canonical actor" pattern already
-    // used for format-apply-mine/reset-complete above, so a lap through all
-    // nine roles builds up a free visual timeline without every client
-    // racing to save its own duplicate.
+    // `by` identifies the original requester -- kept for parity with the
+    // other vote-completion broadcasts (format-apply-mine/reset-complete
+    // also carry it) even though the client doesn't currently act on it
+    // here; an earlier version used it to auto-save a shared take after
+    // every rotation, dropped on request (it filled the gallery with takes
+    // nobody asked for). Saving a take is manual-only now.
     by: v.by,
   });
   schedulePersist();

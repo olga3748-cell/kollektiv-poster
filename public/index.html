@@ -5271,13 +5271,12 @@ socket.on('role-change-complete',d=>{
  updatePresence(d.participants||[]);
  const me=(d.participants||[]).find(p=>p.id===mySocketId);
  if(me)applyMyRole(me.role);
- // K/P KOLLEKTIV: TAKES, delat — one automatic snapshot per completed
- // rotation, building a free visual timeline of the poster's progress.
- // Only the ORIGINAL requester's client does this (the `by` field the
- // server includes for exactly this reason), same "one canonical actor"
- // pattern as format-apply-mine/reset-complete, so the room doesn't end up
- // with N duplicate takes from N clients all reacting to the same event.
- if(d.by===mySocketId && multiplayerActive())saveTakeNow(true);
+ // K/P KOLLEKTIV: TAKES, delat — no longer auto-saved on every rotation
+ // (tried it, but it filled the gallery with takes nobody asked for on
+ // every single role change). Saving a take is manual only now, via
+ // "◉ Spara take" — see saveTakeNow(). The `auto` field/badge stays wired
+ // up server- and gallery-side since it's harmless either way, it just
+ // never actually gets set true from here any more.
  // K/P KOLLEKTIV: not "klar" just because someone reached CHAOS — the
  // server only sends finished:true once the room has rotated all the way
  // around GUIDED_ORDER, i.e. everyone has had every role at least once.
