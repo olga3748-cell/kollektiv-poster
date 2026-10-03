@@ -64,6 +64,27 @@ const PERSIST_PATH = process.env.KOLLEKTIV_PERSIST_PATH || path.join(__dirname, 
 const PERSIST_DEBOUNCE_MS = 2000;
 let persistTimer = null;
 
+// K/P KOLLEKTIV: ROOM CLEANUP. Nothing ever used to delete a room except a
+// participant actually leaving (see finalizeLeave's "room.participants.size
+// === 0" branch) -- that correctly reaps a room the instant everyone's
+// socket is gone, but says nothing about a room nobody has TOUCHED in days:
+// a laptop put to sleep (not closed -- its socket can sit technically
+// "connected" for a long time), an idle tab left open on a finished poster,
+// or a server restart that restored a long-dead session's participants as
+// connected:false with a fresh reconnect-grace timer that nobody was ever
+// going to answer. None of those free the room, so both server memory and
+// PERSIST_PATH just grow forever across a long-running deployment. A room
+// is now stamped with `lastActivity` on every real edit (see touchRoom
+// below) and a periodic sweep deletes any room that's gone cold for
+// ROOM_IDLE_MS -- same outcome as everyone leaving, just not waiting for a
+// disconnect event that may never come. A still-connected client in a swept
+// room isn't forcibly kicked; its next action simply finds the room gone
+// (the same "Rummet finns inte" every other missing-room path already
+// returns), which is a graceful enough landing for a room nobody has
+// touched in two full days.
+const ROOM_IDLE_MS = Number(process.env.KOLLEKTIV_ROOM_IDLE_MS) || 48 * 60 * 60 * 1000; // 48h
+const ROOM_SWEEP_INTERVAL_MS = Number(process.env.KOLLEKTIV_ROOM_SWEEP_INTERVAL_MS) || 60 * 60 * 1000; // 1h
+
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => {
@@ -155,6 +176,9 @@ class Room {
     // updates don't ship every photo in every saved take to everyone.
     this.takes = [];
     this.createdAt = Date.now();
+    // Bumped by touchRoom() on every real edit/vote/join/leave -- see the
+    // ROOM_IDLE_MS comment above for why this exists and what reads it.
+    this.lastActivity = Date.now();
   }
   // Public shape only -- NEVER include `token` here. This is broadcast to
   // every participant in the room (presence) and returned in join/create
@@ -208,6 +232,37 @@ function schedulePersist() {
   persistTimer = setTimeout(persistRoomsNow, PERSIST_DEBOUNCE_MS);
 }
 
+// Marks a room as having just had real activity (an edit, a vote, a chat
+// message, someone joining or leaving) and schedules the usual debounced
+// save. Every call site that used to call schedulePersist() directly for
+// something tied to one specific room now goes through this instead, so
+// ROOM_IDLE_MS sweeps (see sweepIdleRooms below) measure actual use rather
+// than wall-clock time since the room was created.
+function touchRoom(room) {
+  room.lastActivity = Date.now();
+  schedulePersist();
+}
+
+// Runs every ROOM_SWEEP_INTERVAL_MS. Anything that's gone untouched for
+// ROOM_IDLE_MS is deleted exactly like finalizeLeave deletes an empty room
+// (see that function's own comment) -- this just covers the case where a
+// room never actually empties out on its own because a stale connection
+// never sends a 'disconnect'.
+function sweepIdleRooms() {
+  const cutoff = Date.now() - ROOM_IDLE_MS;
+  let swept = 0;
+  for (const [code, room] of rooms) {
+    if (room.lastActivity < cutoff) {
+      rooms.delete(code);
+      swept += 1;
+    }
+  }
+  if (swept) {
+    console.log(`Städade bort ${swept} rum utan aktivitet på över ${Math.round(ROOM_IDLE_MS / 3600000)}h.`);
+    schedulePersist();
+  }
+}
+
 // In-flight votes (roleVote/formatVote/swapVote/…) are deliberately NOT
 // persisted -- they're short-lived and it's harmless for one to simply be
 // gone after a restart (whoever was waiting on it just sees nothing happen
@@ -227,6 +282,7 @@ function persistRoomsNow() {
         takes: room.takes,
         roundsCompleted: room.roundsCompleted,
         createdAt: room.createdAt,
+        lastActivity: room.lastActivity,
       })),
     };
     fs.mkdirSync(path.dirname(PERSIST_PATH), { recursive: true });
@@ -264,15 +320,25 @@ function loadRoomsFromDisk() {
     return;
   }
   if (!data || !Array.isArray(data.rooms)) return;
-  let restored = 0;
+  let restored = 0, skippedIdle = 0;
+  const idleCutoff = Date.now() - ROOM_IDLE_MS;
   for (const saved of data.rooms) {
     if (!saved || typeof saved.code !== 'string' || !Array.isArray(saved.participants) || !saved.participants.length) continue;
+    // A room that was already cold when it was last saved (e.g. the server
+    // sat down for longer than ROOM_IDLE_MS, or crashed long before anyone
+    // noticed) has no business coming back from the dead on boot just to
+    // sit there until the next sweep -- skip it the same as the sweep
+    // itself would, instead of briefly reviving it.
+    const savedActivity = typeof saved.lastActivity === 'number' ? saved.lastActivity
+      : (typeof saved.createdAt === 'number' ? saved.createdAt : Date.now());
+    if (savedActivity < idleCutoff) { skippedIdle += 1; continue; }
     const room = new Room(saved.code);
     room.state = saved.state && typeof saved.state === 'object' ? saved.state : null;
     room.chatLog = Array.isArray(saved.chatLog) ? saved.chatLog : [];
     room.takes = Array.isArray(saved.takes) ? saved.takes : [];
     room.roundsCompleted = Number(saved.roundsCompleted) || 0;
     room.createdAt = typeof saved.createdAt === 'number' ? saved.createdAt : Date.now();
+    room.lastActivity = savedActivity;
     for (const p of saved.participants) {
       if (!p || typeof p.id !== 'string' || !safeToken(p.token)) continue;
       const participant = { id: p.id, name: safeName(p.name), role: GUIDED_ORDER.includes(p.role) ? p.role : GUIDED_ORDER[0], token: p.token, connected: false };
@@ -286,6 +352,7 @@ function loadRoomsFromDisk() {
     }
   }
   if (restored) console.log(`Återställde ${restored} rum från ${PERSIST_PATH}.`);
+  if (skippedIdle) console.log(`Hoppade över ${skippedIdle} rum som redan var över ${Math.round(ROOM_IDLE_MS / 3600000)}h inaktiva.`);
 }
 
 io.on('connection', (socket) => {
@@ -301,7 +368,7 @@ io.on('connection', (socket) => {
       room.participants.set(socket.id, { id: socket.id, name, role, token, connected: true });
       room.tokenIndex.set(token, socket.id);
       rooms.set(code, room);
-      schedulePersist();
+      touchRoom(room);
       socket.join(code);
       socket.data.room = code;
       socket.data.token = token;
@@ -347,7 +414,7 @@ io.on('connection', (socket) => {
     }
     room.participants.set(socket.id, { id: socket.id, name, role, token, connected: true });
     room.tokenIndex.set(token, socket.id);
-    schedulePersist();
+    touchRoom(room);
     socket.join(code);
     socket.data.room = code;
     socket.data.token = token;
@@ -383,7 +450,7 @@ io.on('connection', (socket) => {
     if (payload.state && typeof payload.state === 'object') {
       room.state = payload.state;
       socket.to(room.code).emit('room-state', { room: room.code, state: room.state });
-      schedulePersist();
+      touchRoom(room);
     }
   });
 
@@ -396,7 +463,7 @@ io.on('connection', (socket) => {
       applyFieldOp(room.state[bucket], fields);
     }
     socket.to(room.code).emit('state-op', { room: room.code, type: 'tool', bucket, fields });
-    schedulePersist();
+    touchRoom(room);
   });
 
   socket.on('object-op', (payload) => {
@@ -408,7 +475,7 @@ io.on('connection', (socket) => {
       applyFieldOp(room.state[bucket][index], fields);
     }
     socket.to(room.code).emit('state-op', { room: room.code, type: 'object', bucket, index, fields });
-    schedulePersist();
+    touchRoom(room);
   });
 
   socket.on('text-op', (payload) => {
@@ -420,7 +487,7 @@ io.on('connection', (socket) => {
       applyFieldOp(room.state.texts[index], fields);
     }
     socket.to(room.code).emit('state-op', { room: room.code, type: 'text', index, fields });
-    schedulePersist();
+    touchRoom(room);
   });
 
   socket.on('stroke-add', (payload) => {
@@ -433,7 +500,7 @@ io.on('connection', (socket) => {
       room.state.strokes.push(stroke);
     }
     socket.to(room.code).emit('state-op', { room: room.code, type: 'stroke-add', stroke });
-    schedulePersist();
+    touchRoom(room);
   });
 
   socket.on('strokes-replace', (payload) => {
@@ -443,7 +510,7 @@ io.on('connection', (socket) => {
     if (!Array.isArray(strokes)) return;
     if (room.state) room.state.strokes = strokes;
     socket.to(room.code).emit('state-op', { room: room.code, type: 'strokes-replace', strokes });
-    schedulePersist();
+    touchRoom(room);
   });
 
   socket.on('quick-chat', (payload) => {
@@ -465,7 +532,7 @@ io.on('connection', (socket) => {
     room.chatLog.push(msg);
     if (room.chatLog.length > CHAT_HISTORY_MAX) room.chatLog.shift();
     io.to(room.code).emit('quick-chat', msg);
-    schedulePersist();
+    touchRoom(room);
   });
 
   socket.on('activity', (payload) => {
@@ -731,7 +798,7 @@ io.on('connection', (socket) => {
     room.takes.push(take);
     if (room.takes.length > MAX_TAKES) room.takes.shift();
     io.to(room.code).emit('takes-updated', room.publicTakes());
-    schedulePersist();
+    touchRoom(room);
     cb && cb({ ok: true, id: take.id });
   });
 
@@ -761,7 +828,7 @@ io.on('connection', (socket) => {
     room.takes = room.takes.filter((t) => t.id !== (payload && payload.id));
     if (room.takes.length !== before) {
       io.to(room.code).emit('takes-updated', room.publicTakes());
-      schedulePersist();
+      touchRoom(room);
     }
     cb && cb({ ok: true });
   });
@@ -854,7 +921,7 @@ io.on('connection', (socket) => {
       pb.role = tmp;
     }
     io.to(room.code).emit('swap-complete', { participants: room.list(), a: v.by, b: v.target });
-    schedulePersist();
+    touchRoom(room);
   });
 });
 
@@ -914,7 +981,7 @@ function resolveRoleVoteIfReady(room) {
     // nobody asked for). Saving a take is manual-only now.
     by: v.by,
   });
-  schedulePersist();
+  touchRoom(room);
 }
 
 function broadcastFinishVote(room) {
@@ -939,7 +1006,7 @@ function resolveFinishVoteIfReady(room) {
   // ending early just gets there without actually rotating anyone's role.
   room.roundsCompleted = GUIDED_ORDER.length;
   io.to(room.code).emit('finish-early-complete', {});
-  schedulePersist();
+  touchRoom(room);
 }
 
 function broadcastResetVote(room) {
@@ -975,7 +1042,7 @@ function resolveResetVoteIfReady(room) {
   // format-apply-mine above, so every client doesn't independently
   // generate its own randomised blank state and race the others.
   io.to(room.code).emit('reset-complete', { participants: room.list(), resetBy: v.by });
-  schedulePersist();
+  touchRoom(room);
 }
 
 // Private to the two people involved, unlike the other broadcastX helpers
@@ -1098,7 +1165,7 @@ function finalizeLeave(room, socketId) {
     return;
   }
   broadcastPresence(room);
-  schedulePersist();
+  touchRoom(room);
   if (room.formatVote) resolveFormatVoteIfReady(room);
   if (room.roleVote) resolveRoleVoteIfReady(room);
   if (room.resetVote) resolveResetVoteIfReady(room);
@@ -1106,6 +1173,12 @@ function finalizeLeave(room, socketId) {
 }
 
 loadRoomsFromDisk();
+
+// K/P KOLLEKTIV: periodic idle-room sweep -- see ROOM_IDLE_MS/sweepIdleRooms
+// above. unref() so this interval alone never keeps the process alive (a
+// test server killed via SIGKILL/SIGTERM, or a clean shutdown, shouldn't
+// have to wait on it).
+setInterval(sweepIdleRooms, ROOM_SWEEP_INTERVAL_MS).unref();
 
 // A graceful shutdown (deploy, container restart, ctrl-C locally) gets one
 // last SYNCHRONOUS save -- persistRoomsNow uses writeFileSync/renameSync

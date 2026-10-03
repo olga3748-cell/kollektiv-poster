@@ -218,6 +218,34 @@ de skriver över varandras sparade rum). `data/`-mappen är avsiktligt
 utelämnad från git (se `.gitignore`) — den är genererad, inget att spara
 i ett repo.
 
+## Städning av gamla rum
+
+Ett rum togs tidigare bara bort när dess sista deltagare faktiskt lämnade
+(antingen via LÄMNA RUM, eller genom att återanslutningsfönstret ovan gick
+ut utan att någon kom tillbaka). Det missar ett par vanliga fall: en bärbar
+dator som bara stängs (inte sover) kan hålla sin uppkoppling "ansluten" i
+praktiken länge utan att någon faktiskt sitter kvar, en flik kan lämnas
+öppen på en redan klar poster i dagar, och en serveromstart kunde återställa
+ett urgammalt rum från `rooms.json` med ett nytt återanslutningsfönster som
+ändå aldrig skulle besvaras. Inget av det frigjorde rummet — bara serverns
+minne och den sparade filen växte sig större ju längre servern körde.
+
+Varje rum stämplas nu med en "senast aktiv"-tidpunkt vid varje riktig
+händelse (ett redigeringssteg, en röst, ett chattmeddelande, någon som går
+med eller lämnar). En bakgrundskoll går en gång i timmen igenom alla rum och
+tar bort de som inte haft någon aktivitet på 48 timmar — exakt samma
+städning som när alla lämnar, bara utan att vänta på en frånkoppling som
+kanske aldrig kommer. Sitter någon kvar i ett rum som städas bort märks det
+inte förrän de faktiskt gör något igen (samma "rummet finns inte"-svar som
+om rummet aldrig funnits) — ingen kastas ut aktivt. Ett rum som redan var
+kallt när servern sparade det senast återupplivas heller inte vid en
+omstart, utan hoppas över på samma sätt.
+
+Båda tidsgränserna går att ändra för lokal testning: `KOLLEKTIV_ROOM_IDLE_MS`
+(hur länge ett rum får vara orört innan det räknas som övergivet,
+standard 48 timmar) och `KOLLEKTIV_ROOM_SWEEP_INTERVAL_MS` (hur ofta
+kollen körs, standard en gång i timmen).
+
 ## Köra lokalt
 
 Kräver Node.js 18+.
