@@ -113,6 +113,40 @@ bli synligt "hålig"/prickig i export. Nu skalas bara kornens storlek —
 antalet hålls fast — vilket håller kornigheten proportionerligt likadan
 oavsett export-skala eller pappersformat.
 
+## Pappersärr
+
+Tre handlingar lämnar numera ett permanent, mycket svagt spår efter sig på
+postern: att **sudda** ett TECKNA-drag, och att **ta bort** en sticker eller
+ett textobjekt. Tanken (på användarens egen begäran) är att ingenting ska
+gå att radera helt spårlöst — "saker ska lämna en svag kontur, ett ärr ...
+så att man blir mer noggrann med vad man gör." Ärret är i praktiken löst,
+oregelbundet spritt korn i mycket låg opacitet, inte en jämn form — en
+tidig version ritade det som en mjuk cirkel/gradient, men det lästes som
+"ett andra penseldrag" istället för en oavsiktlig rest, så det byttes mot
+glesa, slumpmässigt placerade prickar.
+
+Ärr från suddgummit **varierar efter vilket PAINTBRUSH-material som var
+aktivt** när suddningen hände — METALL/MÅLAD (materialen som redan smälter
+ihop näraliggande drag) lämnar ett grövre, tätare ärr, TORR lämnar ett
+brutet/fläckigt, BLÄCK ett något mörkare, och så vidare. Det återanvänder
+samma egenskaper (`merge`/`dry`/`ink`/`hard`/`marker`) som redan styr hur
+respektive material faktiskt målas, istället för en egen parallell lista
+som kan hamna i otakt med den. Ärr efter en borttagen sticker eller text
+har ingen materialvariant (de har inget material) och använder en neutral,
+lite svagare standardkänsla.
+
+Precis som allt annat i `state` är `scars`-listan en del av rummets delade,
+sparade tillstånd — den synkas till alla i rummet och överlever en
+serveromstart på exakt samma sätt som drag, stickers och text, och skalas
+om automatiskt vid formatbyte eller export i högre upplösning. Listan är
+dessutom hård-begränsad till de senaste 500 ärren, så en väldigt lång
+session inte växer obegränsat.
+
+Avsiktligt UTANFÖR den här första omgången: att ta bort en FYLL I-yta, och
+RENSA-knappens massradering av hela teckningen. Båda går fortfarande att
+göra precis som innan, utan att lämna något ärr — hör av dig om du vill ha
+dem med också.
+
 ## Återanslutning
 
 Tidigare frigjordes någons roll — och togs hela rummet bort, om man var

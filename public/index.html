@@ -595,6 +595,10 @@ function mkFilterCanvas(w,h){
 const socket=io();
 let roomCode=null,mySocketId=null,applyingRemote=false,syncTimer=null,lastSentJSON='',participants=[];
 let assignedRole=null,currentVote=null,currentFormatVote=null,currentFinishVote=null,currentResetVote=null,currentSwapVote=null,audioCtx=null,cameraStream=null,drawTool='pen',erasing=false,pendingAssignedRole=null;
+// K/P KOLLEKTIV: PAPPERSÄRR -- points actually removed by the CURRENT erase
+// drag, collected as it happens (see eraseAt()) and turned into one scar
+// entry when the gesture ends (see finishDrawingGesture()).
+let erasedPointsThisGesture=[];
 // V11: LJUD — small Web Audio cues sprinkled through the app (see
 // primeAudio/voteSound/chatSound above, extended just below), all gated by
 // this one on/off switch so the whole app can be muted from the header.
@@ -1123,6 +1127,10 @@ function blankState(){
   bg:{type:'solid',c1:'#ffffff',c2:'#ffffff',c3:'#ffffff',colors:1,angle:0,gradientMode:'organisk',seed:Math.floor(Math.random()*1e8)},
   textures:[],
   stickers:[],texts:[],strokes:[],photos:[],fills:[],
+  // K/P KOLLEKTIV: PAPPERSÄRR -- see renderScars() for what lives here and
+  // why (a permanent, very faint trace left where a TECKNA-stroke was
+  // erased, or a sticker/text object deleted).
+  scars:[],
   chaos:{layers:Object.fromEntries(CHAOS_CATEGORIES.map(c=>[c,zeroChaosLayer()])),editing:'all'},
   draw:{size:22,opacity:100,color:'#101010'},
   paint:{material:'RUNDA',size:10,opacity:100,organic:0,swell:0,twist:0,sticky:0,jagged:0,color:'#101010'},
@@ -1364,6 +1372,10 @@ function normalizeState(){
    s.seed=Number.isFinite(s.seed)?s.seed:1701+i*37;
    s.points=Array.isArray(s.points)?s.points:[];
  });
+
+ // K/P KOLLEKTIV: PAPPERSÄRR state -- see renderScars().
+ state.scars=Array.isArray(state.scars)?state.scars:[];
+ state.scars.forEach(s=>{ if(s.type==='stroke')s.points=Array.isArray(s.points)?s.points:[]; });
 
  // V7: TEXTUR moved from a single tool-wide object to a stickers-style
  // layered list, so several materials can be combined on one poster.
@@ -1928,6 +1940,95 @@ const mats={
   hard:0,dry:0,ink:0,marker:0,merge:1,shiny:0
  }
 };
+
+// K/P KOLLEKTIV: PAPPERSÄRR. On request ("saker ska lämna en svag kontur,
+// ett ärr ... så att man blir mer nogrann med vad man gör" -- things should
+// leave a faint outline, a scar, so you become more careful with what you
+// do): erasing a TECKNA-stroke or deleting a sticker/text object now leaves
+// a permanent, very faint trace behind in state.scars, rendered as its own
+// pass (see renderScars()) UNDER everything else on the poster. Deliberately
+// NOT a filled/gradient shape -- an early version of this drawn as a smooth
+// circle read as "a second brush" and felt too strong/digital; what reads as
+// an accidental residue instead is loose, randomly placed grain, sparse
+// enough that any one speck is nearly nothing. Scoped to exactly the three
+// actions asked for (SUDDA, sticker delete, text delete) -- not FYLL I
+// removal or RENSA's bulk clear-the-whole-drawing, which stay unchanged.
+//
+// Stroke scars vary by MATERIAL, same as the user asked -- reusing the
+// character flags `mats` already defines for live rendering (merge/dry/ink/
+// hard/marker) rather than a second, parallel style table that could drift
+// out of sync with them. A METALL/MÅLAD scar comes out grainier and a touch
+// stronger (those materials literally melt strokes into one gooey mass --
+// the residue should look just as merged), TORR's broken dry-brush contact
+// stays broken in what it leaves behind, BLÄCK's pooling ink leaves a
+// slightly darker trace, and so on.
+function scarStyleForMaterial(materialKey){
+ const m=mats[materialKey]||mats.RUNDA;
+ let density=4,speckMax=1,alphaLo=0.010,alphaHi=0.030;
+ if(m.merge){density+=2;alphaHi+=0.016}
+ if(m.dry){density+=2;speckMax=2}
+ if(m.ink){alphaHi+=0.010}
+ if(m.hard){speckMax=Math.max(speckMax,2);density=Math.max(2,density-1)}
+ if(m.marker){density=Math.max(2,density-1);alphaHi=Math.max(alphaLo+0.006,alphaHi-0.004)}
+ return {density,speckMax,alphaLo,alphaHi};
+}
+const SCAR_OBJECT_STYLE={density:4,speckMax:1,alphaLo:0.010,alphaHi:0.024};
+function scarClamp(v,lo,hi){return Math.max(lo,Math.min(hi,v))}
+// Centre-weighted scatter (Math.random() for the radius fraction, not
+// sqrt(random())) on purpose: specks land more densely near the middle and
+// thin out toward the edge, the same soft falloff a gradient would give,
+// but as grain rather than a shape with a defined, "painted" edge.
+function scatterScarSpecks(cx,cy,spreadX,spreadY,style){
+ for(let i=0;i<style.density;i++){
+  const a=Math.random()*Math.PI*2,d=Math.random();
+  const sx=cx+Math.cos(a)*spreadX*d,sy=cy+Math.sin(a)*spreadY*d;
+  const size=(style.speckMax>1 && Math.random()<0.3)?style.speckMax:1;
+  const alpha=style.alphaLo+Math.random()*(style.alphaHi-style.alphaLo);
+  ctx.fillStyle=`rgba(64,52,38,${alpha.toFixed(3)})`;
+  ctx.fillRect(sx,sy,size,size);
+ }
+}
+function renderScars(){
+ const scars=state.scars;
+ if(!scars||!scars.length)return;
+ ctx.save();
+ ctx.globalCompositeOperation='source-over';
+ for(const s of scars){
+  if(s.type==='stroke'){
+    const style=scarStyleForMaterial(s.material);
+    for(const p of (s.points||[]))scatterScarSpecks(p.x,p.y,15,15,style);
+  }else{
+    const rx=s.rx||40,ry=s.ry||40;
+    scatterScarSpecks(s.x,s.y,rx,ry,SCAR_OBJECT_STYLE);
+    scatterScarSpecks(s.x,s.y,rx*0.6,ry*0.6,SCAR_OBJECT_STYLE);
+  }
+ }
+ ctx.restore();
+}
+const MAX_SCARS=500;
+function capScars(){
+ if(state.scars.length>MAX_SCARS)state.scars.splice(0,state.scars.length-MAX_SCARS);
+}
+function downsampleScarPoints(points,max){
+ if(points.length<=max)return points;
+ const step=points.length/max,out=[];
+ for(let i=0;i<max;i++)out.push(points[Math.floor(i*step)]);
+ return out;
+}
+function addObjectScar(type,o){
+ state.scars=state.scars||[];
+ let rx,ry;
+ if(type==='sticker'){
+   const sc=Math.max(Math.abs(o.sx||1),Math.abs(o.sy||1));
+   rx=ry=scarClamp((o.size||80)*sc*0.5,22,180);
+ }else{
+   const len=(o.text||'').length||1;
+   rx=scarClamp((o.size||52)*(o.w||1)*0.26*Math.sqrt(len),30,260);
+   ry=scarClamp((o.size||52)*(o.h||1)*0.6,20,120);
+ }
+ state.scars.push({type,x:o.x,y:o.y,rx,ry,at:Date.now()});
+ capScars();
+}
 
 function rand(seed){let t=seed+0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296}
 // V7: every "add a new X" action used to drop the object at one fixed
@@ -3271,12 +3372,17 @@ function render(){
  const applyGlobal=chaosLayerActive(chaosLayers.all);
 
  if(applyBackground){
-   const off=renderElementOffscreen(()=>{background();texture()});
+   const off=renderElementOffscreen(()=>{background();texture();renderScars()});
    const chaotic=chaosTransform(off,chaosLayers.background);
    ctx.drawImage(chaotic,0,0);
  }else{
    background();
    texture();
+   // K/P KOLLEKTIV: PAPPERSÄRR -- drawn right after the paper itself and
+   // before any ink/sticker/text/photo, so a scar always reads as part of
+   // the paper's surface, never as something sitting on top of the poster's
+   // actual content.
+   renderScars();
  }
 
  const bg=document.createElement('canvas');bg.width=W;bg.height=H;
@@ -4970,7 +5076,11 @@ if(q('brushExtreme'))q('brushExtreme').onclick=()=>{
  saveLocal();buildControls();render()
 };
  el.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{const sp=randomSpawnPoint();state.stickers.push({kind:b.dataset.add,x:sp.x,y:sp.y,size:100,rot:0,opacity:100,sx:1,sy:1,color:palettes[Math.floor(Math.random()*palettes.length)],seed:Math.floor(Math.random()*1e8)});selectedSticker=state.stickers.length-1;saveLocal();buildControls();render()});
- if(q('delSticker'))q('delSticker').onclick=()=>{state.stickers.splice(selectedSticker,1);selectedSticker=-1;saveLocal();buildControls();render()};
+ if(q('delSticker'))q('delSticker').onclick=()=>{
+  // K/P KOLLEKTIV: PAPPERSÄRR -- capture the sticker's last spot/size before
+  // it's gone, same idea as the eraser leaving a trace.
+  const o=state.stickers[selectedSticker];if(o)addObjectScar('sticker',o);
+  state.stickers.splice(selectedSticker,1);selectedSticker=-1;saveLocal();buildControls();render()};
  if(q('addText'))q('addText').onclick=()=>{const sp=randomSpawnPoint();state.texts.push({text:'NY TEXT',x:sp.x,y:sp.y,size:52,color:'#111111',font:'Arial',w:1,h:1,skew:0,rot:0,shadow:0,shadowColor:'#000',blur:8,sx:6,sy:6,inflate:0,letterJitter:false,border:'none',seed:Math.floor(Math.random()*1e8)});selectedText=state.texts.length-1;saveLocal();buildControls();render()}
 if(q('fontFamily')){
  const ti=selectedText>=0?selectedText:0;
@@ -5012,7 +5122,10 @@ if(q('fontFamily')){
    else saveLocal();
    render();
  };
- if(q('delText'))q('delText').onclick=()=>{state.texts.splice(selectedText,1);selectedText=-1;saveLocal();buildControls();render()};
+ if(q('delText'))q('delText').onclick=()=>{
+  // K/P KOLLEKTIV: PAPPERSÄRR -- same as delSticker above.
+  const o=state.texts[selectedText];if(o)addObjectScar('text',o);
+  state.texts.splice(selectedText,1);selectedText=-1;saveLocal();buildControls();render()};
 if(q('photoFilter')){
  q('photoFilter').value=state.photos[selectedPhoto]?.filter||'ingen';
  q('photoFilter').onchange=()=>{
@@ -5135,7 +5248,12 @@ function eraseAt(p,r=28){
   const pts=st.points||[];let seg=[];
   for(const q of pts){
    const hit=(q.x-p.x)*(q.x-p.x)+(q.y-p.y)*(q.y-p.y)<=rr;
-   if(hit){if(seg.length>1)next.push({...st,points:seg});seg=[]}
+   if(hit){
+     if(seg.length>1)next.push({...st,points:seg});seg=[];
+     // K/P KOLLEKTIV: PAPPERSÄRR -- remember what this gesture actually
+     // removed (and its colour), so a scar can be left once it ends.
+     erasedPointsThisGesture.push({x:q.x,y:q.y});
+   }
    else seg.push(q);
   }
   if(seg.length>1)next.push({...st,points:seg});
@@ -5163,10 +5281,25 @@ function finishDrawingGesture(){
  const finished=activeStroke;
  const wasErasing=erasing;
  drawing=false;erasing=false;activeStroke=null;
+ // K/P KOLLEKTIV: PAPPERSÄRR -- one scar entry per erase gesture (not per
+ // point), capped/downsampled so a long drag can't blow the entry up.
+ if(wasErasing && erasedPointsThisGesture.length){
+   state.scars.push({type:'stroke',material:state.paint.material,points:downsampleScarPoints(erasedPointsThisGesture,150),at:Date.now()});
+   capScars();
+ }
+ erasedPointsThisGesture=[];
  if(multiplayerActive()){
-   if(wasErasing)socket.emit('strokes-replace',{room:roomCode,strokes:state.strokes});
+   if(wasErasing){
+     socket.emit('strokes-replace',{room:roomCode,strokes:state.strokes});
+     // strokes-replace only updates state.strokes for the other clients --
+     // the new scar rides along on the next debounced full state-update
+     // instead, same as every other part of `state` that doesn't have its
+     // own dedicated low-latency op.
+     scheduleRoomSync();
+   }
    else if(finished)socket.emit('stroke-add',{room:roomCode,stroke:finished});
  }else saveLocal();
+ scheduleRender();
  if(pendingAssignedRole){const r=pendingAssignedRole;pendingAssignedRole=null;applyMyRole(r)}
 }
 C.onpointerup=finishDrawingGesture;
@@ -5491,7 +5624,7 @@ socket.on('reset-vote-cancelled',d=>{
 socket.on('reset-complete',d=>{
  showResetVote(null);
  showGuidedFinished=false;
- selectedSticker=-1;selectedText=-1;selectedPhoto=-1;selectedTexture=-1;drawing=false;activeStroke=null;erasing=false;
+ selectedSticker=-1;selectedText=-1;selectedPhoto=-1;selectedTexture=-1;drawing=false;activeStroke=null;erasing=false;erasedPointsThisGesture=[];
  updatePresence(d.participants||[]);
  const me=(d.participants||[]).find(p=>p.id===mySocketId);
  if(me)assignedRole=me.role;
@@ -6045,6 +6178,15 @@ function scaleElementCoords(sx,sy,ss){
  // landed exactly on a wall, get silently skipped and vanish) — exactly
  // the "background turned solid, fill disappeared" export bug.
  for(const f of state.fills||[]){f.x*=sx;f.y*=sy}
+ // K/P KOLLEKTIV: PAPPERSÄRR -- scars are positioned in the same W×H space
+ // as everything else above, so they need the exact same rescale on a
+ // format change or export supersampling, or they'd drift away from the
+ // spot they're actually a trace of (the same class of bug the METALL/
+ // MÅLAD grain export mismatch was).
+ for(const s of state.scars||[]){
+   if(s.type==='stroke'){for(const p of s.points||[]){p.x*=sx;p.y*=sy}}
+   else{s.x*=sx;s.y*=sy;if(s.rx!=null)s.rx*=ss;if(s.ry!=null)s.ry*=ss}
+ }
  if(state.draw?.size!=null)state.draw.size*=ss;
  if(state.paint?.size!=null)state.paint.size*=ss;
 }
@@ -6270,7 +6412,7 @@ function soloInit(){
  window.performFullReset=function(){
   const f=state.format||{size:'A4',orientation:'portrait'};
   Object.assign(state,blankState());state.format=f;
-  selectedSticker=-1;selectedText=-1;selectedPhoto=-1;selectedTexture=-1;drawing=false;activeStroke=null;erasing=false;
+  selectedSticker=-1;selectedText=-1;selectedPhoto=-1;selectedTexture=-1;drawing=false;activeStroke=null;erasing=false;erasedPointsThisGesture=[];
   applyCanvasFormat();saveLocal();updateSystemBar();
   showGuidedFinished=false;
   updateRoleChoice();
