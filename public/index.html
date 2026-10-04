@@ -1964,15 +1964,27 @@ const mats={
 // slightly darker trace, and so on.
 function scarStyleForMaterial(materialKey){
  const m=mats[materialKey]||mats.RUNDA;
- let density=4,speckMax=1,alphaLo=0.010,alphaHi=0.030;
- if(m.merge){density+=2;alphaHi+=0.016}
- if(m.dry){density+=2;speckMax=2}
- if(m.ink){alphaHi+=0.010}
- if(m.hard){speckMax=Math.max(speckMax,2);density=Math.max(2,density-1)}
- if(m.marker){density=Math.max(2,density-1);alphaHi=Math.max(alphaLo+0.006,alphaHi-0.004)}
+ // K/P KOLLEKTIV: on user report ("ser inget skugga/ärr") -- these values
+ // were tuned by eye in an isolated standalone test page, which renders its
+ // canvas at close to 1:1 with its CSS size. The real poster canvas here
+ // sits inside #canvas-wrap at a CSS size that's often noticeably SMALLER
+ // than its internal W×H (e.g. ~750 CSS px for a 794px-wide A4 canvas, less
+ // on a smaller window), so the browser's own downscaling of the canvas
+ // bitmap for display quietly washes out anything this faint even further
+ // on top of the alpha already being low on purpose. Compared side by side
+ // at several strengths in a real room (not the isolated test page), the
+ // original values were essentially invisible at normal viewing size --
+ // raised well above what looked right in isolation so it actually reads
+ // as a faint mark once it's inside the real app, not just in a test.
+ let density=9,speckMax=2,alphaLo=0.050,alphaHi=0.120;
+ if(m.merge){density+=3;alphaHi+=0.050}
+ if(m.dry){density+=3;speckMax=3}
+ if(m.ink){alphaHi+=0.030}
+ if(m.hard){speckMax=Math.max(speckMax,3);density=Math.max(4,density-2)}
+ if(m.marker){density=Math.max(4,density-2);alphaHi=Math.max(alphaLo+0.02,alphaHi-0.02)}
  return {density,speckMax,alphaLo,alphaHi};
 }
-const SCAR_OBJECT_STYLE={density:4,speckMax:1,alphaLo:0.010,alphaHi:0.024};
+const SCAR_OBJECT_STYLE={density:8,speckMax:2,alphaLo:0.045,alphaHi:0.100};
 function scarClamp(v,lo,hi){return Math.max(lo,Math.min(hi,v))}
 // Centre-weighted scatter (Math.random() for the radius fraction, not
 // sqrt(random())) on purpose: specks land more densely near the middle and
