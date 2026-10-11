@@ -147,6 +147,30 @@ RENSA-knappens massradering av hela teckningen. Båda går fortfarande att
 göra precis som innan, utan att lämna något ärr — hör av dig om du vill ha
 dem med också.
 
+## Blandningsläge för foto
+
+Varje foto under FOTOGRAF har nu ett eget **BLANDNINGSLÄGE** (på begäran,
+"t.ex multiply"), med Photoshops/CSS:s vanliga uppsättning översatt samma
+väg Adobes egen svenska lokalisering gör: NORMAL, MULTIPLICERA, SCREEN,
+OVERLAY, MÖRKARE, LJUSARE, FÄRGTONING LJUSARE/MÖRKARE (color-dodge/-burn),
+HÅRD/MJUK LJUSEFFEKT, DIFFERENS, UTESLUTNING, NYANS, MÄTTNAD, FÄRG,
+LUMINANS. Varje namn motsvarar exakt en canvas-blandningsinställning
+(`globalCompositeOperation`), så det är samma blandningsmatematik webbläsaren
+redan använder för CSS — inget eget hemmabygge.
+
+Blandningsläget gäller mot vad som än ligger UNDER fotot vid det laget i
+ritordningen — bakgrunden, teckningen, andra foton — vilket i praktiken
+betyder att växeln UNDER TECKNINGEN/OVANPÅ TECKNINGEN också byter vad fotot
+faktiskt blandas MOT. Ett foto satt till MULTIPLICERA och lagt OVANPÅ
+TECKNINGEN mörkar alltså både bakgrunden och penseldragen under det; samma
+foto UNDER TECKNINGEN mörkar bara bakgrunden, och penseldragen ritas sedan
+rent ovanpå som vanligt.
+
+Fungerar med allt annat ett foto redan kan göra — FILTER, TON, RIVEN KANT,
+STRIP-distorsion, och CHAOS-lagret för FOTO — och sparas/synkas/exporteras
+precis som alla andra fotoegenskaper, eftersom det bara är ett nytt fält
+på samma objekt.
+
 ## Återanslutning
 
 Tidigare frigjordes någons roll — och togs hela rummet bort, om man var

@@ -1432,6 +1432,7 @@ function hydratePhotos(){
   p.x??=W/2;p.y??=H/2;p.w??=360;p.h??=300;p.rot??=0;p.opacity??=100;
   p.filter=p.filter||'ingen';p.filterSize??=8;p.tint=p.tint||'#ffffff';p.tintAmount??=0;
   p.distortX??=0;p.distortY??=0;
+  p.blend=p.blend||'normal';
   p.torn??=0;p.tornSeed=Number.isFinite(p.tornSeed)?p.tornSeed:3301+i*67;
   if(p.src && !p.img){
    const im=new Image();
@@ -3316,7 +3317,7 @@ function guidedSnapshot(role){
   case 'stickers':return JSON.stringify(state.stickers);
   case 'draw':return JSON.stringify({strokes:state.strokes,fills:state.fills});
   case 'paint':return JSON.stringify(state.paint);
-  case 'photo':return JSON.stringify(state.photos.map(p=>({x:p.x,y:p.y,w:p.w,h:p.h,rot:p.rot,opacity:p.opacity,filter:p.filter,filterSize:p.filterSize,tintAmount:p.tintAmount,distortX:p.distortX,distortY:p.distortY,torn:p.torn,onTop:p.onTop})));
+  case 'photo':return JSON.stringify(state.photos.map(p=>({x:p.x,y:p.y,w:p.w,h:p.h,rot:p.rot,opacity:p.opacity,filter:p.filter,filterSize:p.filterSize,tintAmount:p.tintAmount,distortX:p.distortX,distortY:p.distortY,torn:p.torn,onTop:p.onTop,blend:p.blend})));
   case 'chaos':return JSON.stringify(state.chaos.layers);
   default:return '';
  }
@@ -3894,6 +3895,31 @@ function tornEdgePath(w,h,seed,amt){
  for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].x,pts[i].y);
  ctx.closePath();
 }
+// K/P KOLLEKTIV: BLANDNINGSLÄGE (blend mode) för FOTOGRAF, on request ("kan
+// vi lägga till en blend mode funktion för foto? ... t.ex multiply"). The
+// standard Photoshop/CSS blend-mode set, translated the way Adobe's own
+// Swedish localisation does (so it reads familiar to anyone who's used
+// Photoshop) -- every value on the right is a real Canvas2D
+// globalCompositeOperation string, used directly in drawPhoto() below, so
+// there's no separate mapping table to keep in sync.
+const PHOTO_BLEND_MODES=[
+ ['normal','NORMAL'],
+ ['multiply','MULTIPLICERA'],
+ ['screen','SCREEN'],
+ ['overlay','OVERLAY'],
+ ['darken','MÖRKARE'],
+ ['lighten','LJUSARE'],
+ ['color-dodge','FÄRGTONING LJUSARE'],
+ ['color-burn','FÄRGTONING MÖRKARE'],
+ ['hard-light','HÅRD LJUSEFFEKT'],
+ ['soft-light','MJUK LJUSEFFEKT'],
+ ['difference','DIFFERENS'],
+ ['exclusion','UTESLUTNING'],
+ ['hue','NYANS'],
+ ['saturation','MÄTTNAD'],
+ ['color','FÄRG'],
+ ['luminosity','LUMINANS'],
+];
 function drawPhoto(p){
  if(!p.img || !p.img.complete)return;
  const w=Math.max(2,p.w||200),h=Math.max(2,p.h||200);
@@ -3962,6 +3988,14 @@ function drawPhoto(p){
 
  ctx.save();ctx.translate(p.x,p.y);ctx.rotate((p.rot||0)*Math.PI/180);
  ctx.globalAlpha=(p.opacity??100)/100;
+ // K/P KOLLEKTIV: BLANDNINGSLÄGE (blend mode), on request. p.blend stores
+ // either 'normal' or a Canvas2D globalCompositeOperation name directly
+ // (they're the same strings PHOTO_BLEND_MODES below uses for its <select>
+ // values), so no separate translation table is needed here -- 'normal'
+ // is the only one that doesn't map 1:1, since Canvas2D spells it
+ // 'source-over'. Scoped to drawPhoto() only, inside this save()/restore()
+ // pair, so it never leaks into anything drawn after this photo.
+ ctx.globalCompositeOperation=(p.blend&&p.blend!=='normal')?p.blend:'source-over';
 
  const tornAmt=Math.min(1,(p.torn||0)/100);
  if(tornAmt>0){
@@ -4931,6 +4965,7 @@ function photoControls(){
  ${slider('STRIP X',p,'distortX',-100,100)}
  ${slider('STRIP Y',p,'distortY',-100,100)}
  ${slider('RIVEN KANT',p,'torn',0,100)}
+ <div class="row"><label>BLANDNINGSLÄGE</label><select id="photoBlend">${PHOTO_BLEND_MODES.map(([v,label])=>`<option value="${v}">${label}</option>`).join('')}</select></div>
  <div class="row"><label>FILTER</label><select id="photoFilter">
   <option value="ingen">INGEN</option>
   <option value="raster">RASTER</option>
@@ -5138,6 +5173,15 @@ if(q('fontFamily')){
   // K/P KOLLEKTIV: PAPPERSÄRR -- same as delSticker above.
   const o=state.texts[selectedText];if(o)addObjectScar('text',o);
   state.texts.splice(selectedText,1);selectedText=-1;saveLocal();buildControls();render()};
+if(q('photoBlend')){
+ q('photoBlend').value=state.photos[selectedPhoto]?.blend||'normal';
+ q('photoBlend').onchange=()=>{
+  if(state.photos[selectedPhoto]){
+   state.photos[selectedPhoto].blend=q('photoBlend').value;
+   saveLocal();render();
+  }
+ };
+}
 if(q('photoFilter')){
  q('photoFilter').value=state.photos[selectedPhoto]?.filter||'ingen';
  q('photoFilter').onchange=()=>{
@@ -5200,7 +5244,7 @@ function addPhotoData(data,w,h){
  const im=new Image();im.onload=()=>{
   const fit=Math.min(450/im.width,500/im.height,1);
   const sp=randomSpawnPoint();
-  state.photos.push({src:data,img:im,x:sp.x,y:sp.y,w:im.width*fit,h:im.height*fit,rot:0,opacity:100,tint:'#ffffff',tintAmount:0,distortX:0,distortY:0,filter:'ingen',filterSize:8,torn:0,tornSeed:Math.floor(Math.random()*1e8)});
+  state.photos.push({src:data,img:im,x:sp.x,y:sp.y,w:im.width*fit,h:im.height*fit,rot:0,opacity:100,tint:'#ffffff',tintAmount:0,distortX:0,distortY:0,filter:'ingen',filterSize:8,torn:0,tornSeed:Math.floor(Math.random()*1e8),blend:'normal'});
   selectedPhoto=state.photos.length-1;saveLocal();buildControls();render();
  };im.src=data;
 }
